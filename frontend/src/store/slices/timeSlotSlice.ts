@@ -7,22 +7,21 @@ export interface TimeSlot {
   start_time: string;
   end_time: string;
   department_id: number;
-  slot_type: 'lecture' | 'lab' | 'break';
-  is_active: boolean;
+  lecture_duration: number;
+  labratory_duration : number;
   department_name?: string;
   day_name?: string;
   formatted_start_time?: string;
   formatted_end_time?: string;
-  duration_minutes?: number;
 }
 
 export interface TimeSlotFormData {
   start_time: string;
   end_time: string;
   department_id: number;
-  slot_type: 'lecture' | 'lab' | 'break';
-  is_active?: boolean;
-}
+  lecture_duration: number;
+  labratory_duration: number;
+ }
 
 interface TimeSlotState {
   timeSlots: TimeSlot[];

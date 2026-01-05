@@ -41,13 +41,13 @@ import { Authentication, Found } from "@/app/auth/auth";
 
 const ShowCourse: React.FC = () => {
   const dispatch = useAppDispatch();
-  
+
   // Redux selectors
   const courses = useAppSelector(selectCoursesWithDepartments);
   const loading = useAppSelector(selectCoursesLoading);
   const error = useAppSelector(selectCoursesError);
   const coursesCount = useAppSelector(selectCoursesCount);
-  
+
   // Local state
   const [searchTerm, setSearchTerm] = useState("");
   const [user, setUser] = useState<any>(null);
@@ -55,7 +55,7 @@ const ShowCourse: React.FC = () => {
     totalCredits: 0,
     categories: {} as Record<string, number>,
   });
-  
+
   // Fetch data on component mount
   useEffect(() => {
     dispatch(fetchCourses());
@@ -70,7 +70,7 @@ const ShowCourse: React.FC = () => {
         acc[category] = (acc[category] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
-      
+
       setStats({ totalCredits, categories });
     }
   }, [courses]);
@@ -114,8 +114,8 @@ const ShowCourse: React.FC = () => {
   return (
     <Stack gap="xl">
       {/* Header Section with Stats */}
-      <Card 
-        shadow="lg" 
+      <Card
+        shadow="lg"
         padding={0}
         radius="lg"
         className="overflow-hidden border-0"
@@ -125,7 +125,7 @@ const ShowCourse: React.FC = () => {
           <div className="absolute inset-0 opacity-10">
             <div className="absolute top-0 left-0 w-full h-full bg-[url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.4\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')]"></div>
           </div>
-          
+
           <Card.Section inheritPadding py="3">
             <Group justify="space-between" align="flex-start">
               <Stack gap="xs">
@@ -146,7 +146,7 @@ const ShowCourse: React.FC = () => {
             </Group>
           </Card.Section>
         </div>
-        
+
         {/* Search Bar */}
         <Card.Section inheritPadding py="lg" className="bg-white/90 backdrop-blur-sm">
           <Grid gutter="md">
@@ -186,10 +186,10 @@ const ShowCourse: React.FC = () => {
       </Card>
 
       {error && (
-        <Alert 
-          icon={<IconAlertCircle size={24} />} 
+        <Alert
+          icon={<IconAlertCircle size={24} />}
           title="Error Loading Courses"
-          color="red" 
+          color="red"
           variant="light"
           radius="lg"
           className="border-2 border-red-200 shadow-sm"
@@ -198,14 +198,14 @@ const ShowCourse: React.FC = () => {
         </Alert>
       )}
 
-     
+
 
       {/* Courses Table */}
-      <Card 
-        shadow="sm" 
-        padding={0} 
-        radius="lg" 
-        withBorder 
+      <Card
+        shadow="sm"
+        padding={0}
+        radius="lg"
+        withBorder
         className="border-blue-100 overflow-hidden shadow-lg"
       >
         {filteredCourses.length === 0 ? (
@@ -225,7 +225,7 @@ const ShowCourse: React.FC = () => {
           <>
             <Card.Section py="md" className="bg-gradient-to-r from-blue-50/30 to-blue-50/10">
               <div className="overflow-x-auto">
-                <Table 
+                <Table
                   verticalSpacing="md"
                   horizontalSpacing="lg"
                   className="min-w-full"
@@ -242,7 +242,19 @@ const ShowCourse: React.FC = () => {
                         <Text className="text-blue-600 font-bold">Course Name</Text>
                       </Table.Th>
                       <Table.Th className="pb-4 text-center">
-                        <Text className="text-blue-600 font-bold">Credits</Text>
+                        <Group gap="xs" justify="center">
+                          <IconClock size={18} className="text-blue-500" />
+                          <Text className="text-blue-600 font-bold">Credit Hr</Text>
+                        </Group>
+                      </Table.Th>
+                      <Table.Th className="pb-4 text-center">
+                        <Text className="text-blue-600 font-bold">Lec Hr</Text>
+                      </Table.Th>
+                      <Table.Th className="pb-4 text-center">
+                        <Text className="text-blue-600 font-bold">Lab Hr</Text>
+                      </Table.Th>
+                      <Table.Th className="pb-4 text-center">
+                        <Text className="text-blue-600 font-bold">Tut Hr</Text>
                       </Table.Th>
                       <Table.Th className="pb-4">
                         <Text className="text-blue-600 font-bold">Category</Text>
@@ -254,8 +266,8 @@ const ShowCourse: React.FC = () => {
                   </Table.Thead>
                   <Table.Tbody>
                     {filteredCourses.map((course, index) => (
-                      <Table.Tr 
-                        key={course.course_id} 
+                      <Table.Tr
+                        key={course.course_id}
                         className={`
                           transition-all duration-300 hover:shadow-md hover:scale-[1.002]
                           ${index % 2 === 0 ? 'bg-white' : 'bg-blue-50/30'}
@@ -293,18 +305,47 @@ const ShowCourse: React.FC = () => {
                             variant="gradient"
                             gradient={{ from: 'blue', to: 'cyan' }}
                             size="lg"
-                            className="min-w-[90px] shadow-sm font-bold py-2"
-                            leftSection={<IconClock size={14} />}
+                            className="min-w-[70px] shadow-sm font-bold py-2"
                           >
-                            {course.credit_hour} CR
+                            {course.credit_hour}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td className="text-center">
+                          <Badge
+                            color="blue"
+                            variant="light"
+                            size="md"
+                            className="min-w-[60px] font-semibold"
+                          >
+                            {course.lec_hr || 0}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td className="text-center">
+                          <Badge
+                            color="blue"
+                            variant="light"
+                            size="md"
+                            className="min-w-[60px] font-semibold"
+                          >
+                            {course.lab_hr || 0}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td className="text-center">
+                          <Badge
+                            color="blue"
+                            variant="light"
+                            size="md"
+                            className="min-w-[60px] font-semibold"
+                          >
+                            {course.tut_hr || 0}
                           </Badge>
                         </Table.Td>
                         <Table.Td>
                           <Badge
                             color={
                               course.category?.includes('Major') ? 'blue' :
-                              course.category?.includes('Support') ? 'teal' :
-                              course.category?.includes('Common') ? 'grape' : 'gray'
+                                course.category?.includes('Support') ? 'teal' :
+                                  course.category?.includes('Common') ? 'grape' : 'gray'
                             }
                             variant="filled"
                             size="md"
@@ -330,12 +371,12 @@ const ShowCourse: React.FC = () => {
                 </Table>
               </div>
             </Card.Section>
-            
+
             {/* Footer */}
-            <Card.Section 
-              withBorder 
-              inheritPadding 
-              py="md" 
+            <Card.Section
+              withBorder
+              inheritPadding
+              py="md"
               className="bg-gradient-to-r from-blue-50/40 to-blue-50/10 border-t border-blue-100"
             >
               <Flex justify="space-between" align="center">
@@ -365,15 +406,15 @@ const ShowCourse: React.FC = () => {
       {/* Stats Summary */}
       <Grid gutter="md">
         <Grid.Col span={{ base: 12, md: 4 }}>
-          <Card 
-            padding="lg" 
-            radius="lg" 
-            withBorder 
+          <Card
+            padding="lg"
+            radius="lg"
+            withBorder
             className="border-blue-100 bg-gradient-to-br from-blue-50/50 to-white text-center"
           >
-            <ThemeIcon 
-              size={56} 
-              radius="lg" 
+            <ThemeIcon
+              size={56}
+              radius="lg"
               className="bg-gradient-to-br from-blue-500 to-blue-400 mx-auto mb-4 shadow-md"
             >
               <IconBooks size={24} />
@@ -382,17 +423,17 @@ const ShowCourse: React.FC = () => {
             <Text c="dimmed" size="sm">Total Courses</Text>
           </Card>
         </Grid.Col>
-        
+
         <Grid.Col span={{ base: 12, md: 4 }}>
-          <Card 
-            padding="lg" 
-            radius="lg" 
-            withBorder 
+          <Card
+            padding="lg"
+            radius="lg"
+            withBorder
             className="border-teal-100 bg-gradient-to-br from-teal-50/50 to-white text-center"
           >
-            <ThemeIcon 
-              size={56} 
-              radius="lg" 
+            <ThemeIcon
+              size={56}
+              radius="lg"
               className="bg-gradient-to-br from-teal-500 to-teal-400 mx-auto mb-4 shadow-md"
             >
               <IconClock size={24} />
@@ -401,17 +442,17 @@ const ShowCourse: React.FC = () => {
             <Text c="dimmed" size="sm">Total Credits</Text>
           </Card>
         </Grid.Col>
-        
+
         <Grid.Col span={{ base: 12, md: 4 }}>
-          <Card 
-            padding="lg" 
-            radius="lg" 
-            withBorder 
+          <Card
+            padding="lg"
+            radius="lg"
+            withBorder
             className="border-purple-100 bg-gradient-to-br from-purple-50/50 to-white text-center"
           >
-            <ThemeIcon 
-              size={56} 
-              radius="lg" 
+            <ThemeIcon
+              size={56}
+              radius="lg"
               className="bg-gradient-to-br from-purple-500 to-purple-400 mx-auto mb-4 shadow-md"
             >
               <IconCategory size={24} />

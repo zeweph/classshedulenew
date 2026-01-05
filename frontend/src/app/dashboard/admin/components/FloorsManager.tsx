@@ -10,9 +10,8 @@ import {
   Group,
   ActionIcon,
   Modal,
-  TextInput,
-  Textarea,
   Select,
+  NumberInput,
   Loader,
   Alert,
   Badge,
@@ -34,48 +33,32 @@ import {
   deleteFloor,
   clearError,
   clearSuccessMessage,
+  Floor,
 } from "@/store/slices/roomsSlice";
 
-interface Floor {
-  floor_id: number;
-  block_id: number;
-  floor_number: number;
-  floor_name?: string;
-  description?: string;
-  block_name: string;
-  block_code: string;
-}
+
 
 // Then adapt your form values to handle string inputs
 interface FloorFormValues {
   block_id: string;
   floor_number: string;
-  floor_name: string;
-  description: string;
-}
-
-// Type for API payload
-interface FloorPayload {
-  block_id: number;
-  floor_number: number;
-  floor_name?: string;
-  description?: string;
+  room_capacity: string;
 }
 
 const FloorsManager: React.FC = () => {
   const dispatch = useAppDispatch();
   const { floors, blocks, loading, error, successMessage } = useAppSelector((state) => state.rooms);
-  
+
   const [modalOpened, setModalOpened] = useState(false);
   const [editingFloor, setEditingFloor] = useState<Floor | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
 
   const form = useForm<FloorFormValues>({
     initialValues: {
       block_id: "",
       floor_number: "",
-      floor_name: "",
-      description: "",
+      room_capacity: "30",
     },
     validate: {
       block_id: (value) => (value ? null : "Block is required"),
@@ -112,11 +95,10 @@ const FloorsManager: React.FC = () => {
   const handleSubmit = async (values: FloorFormValues) => {
     setActionLoading(true);
     try {
-      const payload: FloorPayload = {
+      const payload: Omit<Floor, 'floor_id'> = {
         block_id: parseInt(values.block_id),
         floor_number: parseInt(values.floor_number),
-        floor_name: values.floor_name || undefined,
-        description: values.description || undefined,
+        room_capacity: parseInt(values.room_capacity),
       };
 
       if (editingFloor) {
@@ -125,9 +107,9 @@ const FloorsManager: React.FC = () => {
           floorData: payload
         })).unwrap();
       } else {
-        await dispatch(addFloor(payload)).unwrap(); 
+        await dispatch(addFloor(payload)).unwrap();
       }
-      
+
       setModalOpened(false);
       form.reset();
       setEditingFloor(null);
@@ -145,8 +127,7 @@ const FloorsManager: React.FC = () => {
     form.setValues({
       block_id: floor.block_id.toString(),
       floor_number: floor.floor_number.toString(),
-      floor_name: floor.floor_name || "",
-      description: floor.description || "",
+      room_capacity: (floor.room_capacity || 30).toString(),
     });
     setModalOpened(true);
   };
@@ -222,6 +203,25 @@ const FloorsManager: React.FC = () => {
         </Alert>
       )}
 
+      {/* Filters */}
+      <Card withBorder radius="md">
+        <Group>
+          <Select
+            label="Filter by Block"
+            placeholder="All blocks"
+            data={[
+              { value: '', label: 'All blocks' },
+              ...blocks.map(b => ({ value: b.block_id.toString(), label: b.block_name }))
+            ]}
+            value={selectedBlock}
+            onChange={setSelectedBlock}
+            clearable
+            searchable
+            className="flex-1"
+          />
+        </Group>
+      </Card>
+
       {/* Floors Table */}
       <Card withBorder radius="md">
         {loading && floors.length === 0 ? (
@@ -251,52 +251,50 @@ const FloorsManager: React.FC = () => {
                 <Table.Tr>
                   <Table.Th>Block</Table.Th>
                   <Table.Th>Floor Number</Table.Th>
-                  <Table.Th>Floor Name</Table.Th>
-                  <Table.Th>Description</Table.Th>
+                  <Table.Th>Room Capacity</Table.Th>
                   <Table.Th>Actions</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {floors.map((floor) => (
-                  <Table.Tr key={floor.floor_id}>
-                    <Table.Td>
-                      <Badge variant="light" color="blue">
-                        {floor.block_name} ({floor.block_code})
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text fw={500}>Floor {floor.floor_number}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text>{floor.floor_name || "—"}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text c="dimmed" size="sm">
-                        {floor.description || "No description"}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap="xs">
-                        <ActionIcon
-                          color="blue"
-                          variant="light"
-                          onClick={() => handleEdit(floor)}
-                          disabled={actionLoading}
-                        >
-                          <PencilSquareIcon className="h-4 w-4" />
-                        </ActionIcon>
-                        <ActionIcon
-                          color="red"
-                          variant="light"
-                          onClick={() => handleDelete(floor.floor_id)}
-                          disabled={actionLoading}
-                        >
-                          <TrashIcon className="h-4 w-4" />
-                        </ActionIcon>
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
+                {floors
+                  .filter(floor => !selectedBlock || floor.block_id === parseInt(selectedBlock))
+                  .map((floor) => (
+                    <Table.Tr key={floor.floor_id}>
+                      <Table.Td>
+                        <Badge variant="light" color="blue">
+                          {floor.block_name} ({floor.block_code})
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text fw={500}>G{floor.floor_number}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge variant="outline" color="cyan">
+                          {floor.room_capacity || 0} Rooms
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          <ActionIcon
+                            color="blue"
+                            variant="light"
+                            onClick={() => handleEdit(floor)}
+                            disabled={actionLoading}
+                          >
+                            <PencilSquareIcon className="h-4 w-4" />
+                          </ActionIcon>
+                          <ActionIcon
+                            color="red"
+                            variant="light"
+                            onClick={() => handleDelete(floor.floor_id)}
+                            disabled={actionLoading}
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </ActionIcon>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
@@ -307,7 +305,7 @@ const FloorsManager: React.FC = () => {
       <Modal
         opened={modalOpened}
         onClose={handleCloseModal}
-        title={editingFloor ? `Edit Floor - Floor ${editingFloor.floor_number}` : "Add New Floor"}
+        title={editingFloor ? `Edit Floor - G${editingFloor.floor_number}` : "Add New Floor"}
         size="lg"
       >
         <form onSubmit={form.onSubmit(handleSubmit)}>
@@ -319,35 +317,50 @@ const FloorsManager: React.FC = () => {
               required
               {...form.getInputProps("block_id")}
             />
-            <TextInput
+            <Select
               label="Floor Number"
-              placeholder="e.g., 1, 2, 3"
-              type="number"
+              placeholder="Select a floor"
+              data={(() => {
+                const block = blocks.find(b => b.block_id === parseInt(form.values.block_id));
+                if (!block || !block.floor_capacity) return [];
+
+                // Generate all possible floor numbers
+                const allFloors = Array.from({ length: block.floor_capacity }, (_, i) => ({
+                  value: i.toString(),
+                  label: `G${i}`
+                }));
+
+                // Filter out already registered floors (except when editing the current floor)
+                const existingFloorNumbers = floors
+                  .filter(f => f.block_id === parseInt(form.values.block_id) && (!editingFloor || f.floor_id !== editingFloor.floor_id))
+                  .map(f => f.floor_number);
+
+                return allFloors.filter(gf => !existingFloorNumbers.includes(parseInt(gf.value)));
+              })()}
               required
+              disabled={!form.values.block_id}
               {...form.getInputProps("floor_number")}
             />
-            <TextInput
-              label="Floor Name"
-              placeholder="e.g., Ground Floor, First Floor"
-              {...form.getInputProps("floor_name")}
+
+            <NumberInput
+              label="Room Capacity"
+              placeholder="Number of rooms this floor can hold"
+              min={1}
+              required
+              {...form.getInputProps("room_capacity")}
             />
-            <Textarea
-              label="Description"
-              placeholder="Optional description of the floor"
-              rows={3}
-              {...form.getInputProps("description")}
-            />
-            
+
+
             <Group justify="flex-end" mt="md">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={handleCloseModal}
                 disabled={actionLoading}
               >
                 Cancel
               </Button>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 loading={actionLoading}
               >
                 {editingFloor ? "Update Floor" : "Add Floor"}

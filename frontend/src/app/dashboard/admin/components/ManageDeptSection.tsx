@@ -18,7 +18,6 @@ import {
   KeyIcon,
   CheckCircleIcon as CheckIcon,
   EyeIcon,
-  MapPinIcon,
 } from "@heroicons/react/24/outline";
 import {
   Button,
@@ -362,34 +361,52 @@ const RoomAssignmentModal: React.FC<RoomAssignmentModalProps> = ({
         room.is_available === true &&
         !assignedRooms.some(ar => ar.room_id === room.room_id) // Filter out already assigned rooms
       );
-      setAvailableRooms(blockRooms);
+      setAvailableRooms(blockRooms)
     }
   }, [selectedBlock, rooms, opened, assignedRooms]);
 
   const handleAssignRooms = async () => {
-    if (!department || selectedRooms.length === 0) return;
+  if (!department || selectedRooms.length === 0) return;
+  
+  setAssigning(true);
+  try {
+    const roomIds = selectedRooms.map(id => parseInt(id));
+    const results = await onAssign(department.department_id, roomIds);
     
-    setAssigning(true);
-    try {
-      const roomIds = selectedRooms.map(id => parseInt(id));
-      await onAssign(department.department_id, roomIds);
+    // Handle partial successes/errors
+    const successfulAssignments = results.filter((r: any) => r.success);
+    const failedAssignments = results.filter((r: any) => !r.success);
+    
+    if (successfulAssignments.length > 0) {
       await loadAssignedRooms(); // Refresh assigned rooms
       setSelectedRooms([]); // Clear selection
+      
       notifications.show({
         color: "green",
         title: "Success",
-        message: `Assigned ${selectedRooms.length} room(s) to department`,
+        message: `Successfully assigned ${successfulAssignments.length} room(s) to department`,
       });
-    } catch (error: any) {
-      notifications.show({
-        color: "red",
-        title: "Error",
-        message: error.message || "Failed to assign rooms",
-      });
-    } finally {
-      setAssigning(false);
     }
-  };
+    
+    if (failedAssignments.length > 0) {
+      failedAssignments.forEach((failure: any) => {
+        notifications.show({
+          color: "yellow",
+          title: "Assignment Conflict",
+          message: failure.error || "Room assignment failed",
+        });
+      });
+    }
+  } catch (error: any) {
+    notifications.show({
+      color: "red",
+      title: "Error",
+      message: error.message || "Failed to assign rooms",
+    });
+  } finally {
+    setAssigning(false);
+  }
+};
 
   const handleRemoveRoom = async (roomId: number) => {
     if (!department) return;
@@ -846,18 +863,6 @@ const ManageDepartments: React.FC = () => {
     });
   };
 
-  // View department rooms
-  const handleViewRooms = (department: Department) => {
-    const departmentWithDetails: DepartmentWithDetails = {
-      ...department,
-      assigned_rooms: [],
-      room_count: 0
-    };
-    setViewModal({
-      opened: true,
-      department: departmentWithDetails
-    });
-  };
 
   // Save department (add or edit)
   const handleSaveDepartment = async (
@@ -898,13 +903,50 @@ const ManageDepartments: React.FC = () => {
 
   // Assign rooms to department
   const handleAssignRoomsToDepartment = async (departmentId: number, roomIds: number[]) => {
-    setActionLoading(true);
-    try {
-      await Promise.all(roomIds.map(roomId => 
-        dispatch(assignRoomToDepartment({ departmentId, roomId, status: "active" }))
-      ));
+  setActionLoading(true);
+  try {
+    // Process rooms sequentially to handle conflicts properly
+    const results = [];
+    
+    for (const roomId of roomIds) {
+      try {
+        const result = await dispatch(assignRoomToDepartment({ 
+          departmentId, 
+          roomId, 
+          status: "active" 
+        })).unwrap();
+        
+        results.push({
+          success: true,
+          roomId,
+          data: result
+        });
+      } catch (error: any) {
+        // Check if it's a conflict error
+        if (error?.status === 409 || error?.error?.includes('already assigned')) {
+          results.push({
+            success: false,
+            roomId,
+            error: error.error || `Room ${roomId} is already assigned to another department`
+          });
+        } else {
+          throw error; // Re-throw unexpected errors
+        }
+      }
+    }
+    
+    // Show summary notification
+    const successful = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+    
+    if (successful > 0) {
+      notifications.show({
+        color: "green",
+        title: "Assignment Summary",
+        message: `Assigned ${successful} room(s), ${failed} failed due to conflicts`
+      });
       
-      // Fetch rooms for the updated block
+      // Fetch rooms for the updated block (only if successful assignments)
       const department = departments.find(d => d.department_id === departmentId);
       if (department?.faculity_id) {
         const facultyBlocks = blocks.filter(block => block.faculity_id === department.faculity_id);
@@ -912,19 +954,20 @@ const ManageDepartments: React.FC = () => {
           dispatch(fetchRooms({ blockId: facultyBlocks[0].block_id }));
         }
       }
-      
-      return Promise.resolve();
-    } catch (err: any) {
-      notifications.show({
-        color: "red",
-        title: "Error",
-        message: err.message || "Failed to assign rooms",
-      });
-      throw err;
-    } finally {
-      setActionLoading(false);
     }
-  };
+    
+    return results;
+  } catch (err: any) {
+    notifications.show({
+      color: "red",
+      title: "Error",
+      message: err.message || "Failed to assign rooms",
+    });
+    throw err;
+  } finally {
+    setActionLoading(false);
+  }
+};
 
   // Remove room from department
   const handleRemoveRoomFromDepartment = async (departmentId: number, roomId: number) => {
@@ -1273,12 +1316,7 @@ const ManageDepartments: React.FC = () => {
                           <Text fw={600}>Department Head</Text>
                         </Group>
                       </Table.Th>
-                      <Table.Th style={{ minWidth: 150 }}>
-                        <Group gap="xs">
-                          <HomeModernIcon className="h-4 w-4" />
-                          <Text fw={600}>Rooms</Text>
-                        </Group>
-                      </Table.Th>
+                      
                       <Table.Th style={{ minWidth: 150, textAlign: 'center' }}>
                         <Text fw={600}>Status</Text>
                       </Table.Th>
@@ -1357,32 +1395,6 @@ const ManageDepartments: React.FC = () => {
                             </Badge>
                           )}
                         </Table.Td>
-                        
-                        <Table.Td>
-                          <Group gap="xs">
-                            <Button
-                              variant="light"
-                              color="teal"
-                              size="sm"
-                              onClick={() => handleAssignRooms(dept)}
-                              leftSection={<KeyIcon className="h-3 w-3" />}
-                              disabled={!dept.faculity_id}
-                            >
-                              Assign
-                            </Button>
-                            <Button
-                              variant="subtle"
-                              color="blue"
-                              size="sm"
-                              onClick={() => handleViewRooms(dept)}
-                              leftSection={<EyeIcon className="h-3 w-3" />}
-                              disabled={!dept.faculity_id}
-                            >
-                              View
-                            </Button>
-                          </Group>
-                        </Table.Td>
-                        
                         <Table.Td>
                           <Center>
                             <Badge 

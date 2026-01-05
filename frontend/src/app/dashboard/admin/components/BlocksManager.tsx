@@ -35,9 +35,10 @@ import {
 } from "@/store/slices/roomsSlice";
 // Make sure this interface matches your Redux Block interface
 interface Block {
-  block_id: number;  // Changed from 'id' to 'block_id' to match Redux
+  block_id: number;
   block_name: string;
   block_code: string;
+  floor_capacity: number;
   description?: string;
   created_at?: string;
 }
@@ -45,7 +46,7 @@ interface Block {
 const BlocksManager: React.FC = () => {
   const dispatch = useAppDispatch();
   const { blocks, loading, error, successMessage } = useAppSelector((state) => state.rooms);
-  
+
   const [modalOpened, setModalOpened] = useState(false);
   const [editingBlock, setEditingBlock] = useState<Block | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -54,6 +55,7 @@ const BlocksManager: React.FC = () => {
     initialValues: {
       block_name: "",
       block_code: "",
+      floor_capacity: 1,
       description: "",
     },
     validate: {
@@ -88,20 +90,39 @@ const BlocksManager: React.FC = () => {
 
   // Handle form submission
   const handleSubmit = async (values: typeof form.values) => {
+    // Client-side Duplicate Check
+    const isDuplicate = blocks.some(block => {
+      // If editing, skip the current block being edited
+      if (editingBlock && block.block_id === editingBlock.block_id) {
+        return false;
+      }
+      return (
+        block.block_name.toLowerCase() === values.block_name.toLowerCase() ||
+        block.block_code.toLowerCase() === values.block_code.toLowerCase()
+      );
+    });
+
+    if (isDuplicate) {
+      // Set error manually in the form or show notification (using alert here via slice if needed, but easier to use form error)
+      form.setErrors({
+        block_name: 'Block name or code already exists',
+        block_code: 'Block name or code already exists'
+      });
+      return;
+    }
+
     setActionLoading(true);
     try {
       if (editingBlock) {
-        // Make sure block_id is properly passed
         console.log('Updating block with ID:', editingBlock.block_id);
-        
         await dispatch(updateBlock({
-          blockId: editingBlock.block_id, // Use block_id from the editingBlock
+          blockId: editingBlock.block_id,
           blockData: values
         })).unwrap();
       } else {
         await dispatch(addBlock(values)).unwrap();
       }
-      
+
       setModalOpened(false);
       form.reset();
       setEditingBlock(null);
@@ -120,6 +141,7 @@ const BlocksManager: React.FC = () => {
     form.setValues({
       block_name: block.block_name,
       block_code: block.block_code,
+      floor_capacity: block.floor_capacity || 1,
       description: block.description || "",
     });
     setModalOpened(true);
@@ -209,18 +231,19 @@ const BlocksManager: React.FC = () => {
           <Table.ScrollContainer minWidth={600}>
             <Table verticalSpacing="sm">
               <Table.Thead>
-                    <Table.Tr>
-                                        <Table.Th>#</Table.Th>
+                <Table.Tr>
+                  <Table.Th>#</Table.Th>
                   <Table.Th>Block Code</Table.Th>
                   <Table.Th>Block Name</Table.Th>
+                  <Table.Th>Floor Capacity</Table.Th>
                   <Table.Th>Description</Table.Th>
                   <Table.Th>Actions</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {blocks.map((block ,index) => (
+                {blocks.map((block, index) => (
                   <Table.Tr key={block.block_id}>
-                    <Table.Td> {index +1}</Table.Td>
+                    <Table.Td> {index + 1}</Table.Td>
                     <Table.Td>
                       <Badge variant="light" color="blue">
                         {block.block_code}
@@ -228,6 +251,11 @@ const BlocksManager: React.FC = () => {
                     </Table.Td>
                     <Table.Td>
                       <Text fw={500}>{block.block_name}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge variant="outline" color="gray">
+                        {block.floor_capacity || 0} Floors
+                      </Badge>
                     </Table.Td>
                     <Table.Td>
                       <Text c="dimmed" size="sm">
@@ -283,30 +311,37 @@ const BlocksManager: React.FC = () => {
               required
               {...form.getInputProps("block_code")}
             />
+            <TextInput
+              label="Floor Capacity"
+              placeholder="e.g., 5"
+              type="number"
+              required
+              {...form.getInputProps("floor_capacity")}
+            />
             <Textarea
               label="Description"
               placeholder="Optional description of the block"
               rows={3}
               {...form.getInputProps("description")}
             />
-            
+
             {/* Debug info - remove in production */}
             {editingBlock && (
               <Text size="xs" c="dimmed">
                 Block ID: {editingBlock.block_id}
               </Text>
             )}
-            
+
             <Group justify="flex-end" mt="md">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={handleCloseModal}
                 disabled={actionLoading}
               >
                 Cancel
               </Button>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 loading={actionLoading}
               >
                 {editingBlock ? "Update Block" : "Add Block"}

@@ -96,6 +96,7 @@ const ManageCourse: React.FC = () => {
     credit_hour: 1,
     lec_hr: 0,
     lab_hr: 0,
+    tut_hr: 0,
     category: "",
   });
 
@@ -148,6 +149,7 @@ const ManageCourse: React.FC = () => {
       credit_hour: course.credit_hour,
       lec_hr: course.lec_hr || 0,
       lab_hr: course.lab_hr || 0,
+      tut_hr: course.tut_hr || 0,
       category: course.category,
     });
     setEditModalOpened(true);
@@ -166,6 +168,7 @@ const ManageCourse: React.FC = () => {
         credit_hour: editForm.credit_hour,
         lec_hr: editForm.lec_hr,
         lab_hr: editForm.lab_hr,
+        tut_hr: editForm.tut_hr,
         category: editForm.category,
       })).unwrap();
 
@@ -228,6 +231,7 @@ const ManageCourse: React.FC = () => {
       credit_hour: 1,
       lec_hr: 0,
       lab_hr: 0,
+      tut_hr: 0,
       category: "",
     });
   };

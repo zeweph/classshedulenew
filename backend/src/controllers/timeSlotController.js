@@ -1,10 +1,6 @@
 // src/controllers/timeSlotController.js
 const pool = require("../db");
-
-/**
- * @desc    Get all time slots
- * @route   GET /api/time-slots
- */
+ 
 const getAllTimeSlots = async (req, res) => {
   try {
     const query = `
@@ -13,10 +9,10 @@ const getAllTimeSlots = async (req, res) => {
         d.department_name,
         TO_CHAR(ts.start_time, 'HH24:MI') as formatted_start_time,
         TO_CHAR(ts.end_time, 'HH24:MI') as formatted_end_time,
-        EXTRACT(EPOCH FROM (ts.end_time - ts.start_time))/60 as duration_minutes
+        EXTRACT(EPOCH FROM (ts.end_time - ts.start_time))/60 as Lecture_duration_minutes
       FROM time_slots ts
       LEFT JOIN departments d ON ts.department_id = d.department_id
-      ORDER BY  ts.start_time
+      ORDER BY ts.start_time
     `;
 
     const { rows } = await pool.query(query);
@@ -34,11 +30,6 @@ const getAllTimeSlots = async (req, res) => {
     });
   }
 };
-
-/**
- * @desc    Get time slot by ID
- * @route   GET /api/time-slots/:id
- */
 const getTimeSlotById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -73,26 +64,21 @@ const getTimeSlotById = async (req, res) => {
     });
   }
 };
-
-/**
- * @desc    Create a new time slot
- * @route   POST /api/time-slots
- */
 const createTimeSlot = async (req, res) => {
   try {
     const { 
       start_time, 
       end_time, 
       department_id, 
-      slot_type, 
-      is_active = true 
+      lecture_duration,
+      labratory_duration
     } = req.body;
-
+       console.log("request", req.body);
     // Validate required fields
-    if ( !start_time || !end_time || !department_id || !slot_type) {
+    if ( !start_time || !end_time || !department_id|| lecture_duration === null || labratory_duration === null) {
       return res.status(400).json({
         success: false,
-        error: "All fields are required (day_of_week, start_time, end_time, department_id, slot_type)"
+        error: "All fields are required ( start_time, end_time, department_id, Lecture_duration, labratory_duration)"
       });
     }
 
@@ -140,7 +126,7 @@ const createTimeSlot = async (req, res) => {
     // Create time slot
     const query = `
       INSERT INTO time_slots 
-        (start_time, end_time, department_id, slot_type, is_active)
+        (start_time, end_time, department_id, Lecture_duration, labratory_duration)
       VALUES ($1, $2, $3, $4, $5)
       RETURNING *
     `;
@@ -149,8 +135,8 @@ const createTimeSlot = async (req, res) => {
       start_time, 
       end_time, 
       department_id, 
-      slot_type, 
-      is_active
+      Number(lecture_duration),
+      Number(labratory_duration)
     ]);
 
     // Get full data with joins
@@ -184,17 +170,12 @@ const createTimeSlot = async (req, res) => {
     });
   }
 };
-
-/**
- * @desc    Update a time slot
- * @route   PUT /api/time-slots/:id
- */
 const updateTimeSlot = async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
 
-    // Check if time slot exists
+    // 🔍 Check if time slot exists
     const checkQuery = await pool.query(
       "SELECT * FROM time_slots WHERE id = $1",
       [id]
@@ -206,14 +187,34 @@ const updateTimeSlot = async (req, res) => {
         error: "Time slot not found"
       });
     }
+      // Check if time slot is used in schedules
+    const scheduleCheck = await pool.query(`
+      SELECT 1 FROM day_courses dc
+      JOIN day_schedules ds ON dc.day_schedule_id = ds.id
+      JOIN schedules s ON ds.schedule_id = s.id
+      WHERE s.department_id = (SELECT department_id FROM time_slots WHERE id = $1) and s.status='published'
+      LIMIT 1
+    `, [id]);
 
-    // Build dynamic update query
+    if (scheduleCheck.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Cannot update time slot that is being used in schedules. please unpublish current schedule"
+      });
+    }
+
+    // ✅ Allowed fields (MATCH DB COLUMN NAMES)
+    const allowedFields = [
+      "start_time",
+      "end_time",
+      "lecture_duration",
+      "labratory_duration"
+    ];
+
     const updateFields = [];
     const values = [];
     let paramCount = 1;
 
-    const allowedFields = ['start_time', 'end_time', 'department_id', 'slot_type', 'is_active'];
-    
     for (const [field, value] of Object.entries(updates)) {
       if (allowedFields.includes(field) && value !== undefined) {
         updateFields.push(`${field} = $${paramCount}`);
@@ -222,18 +223,22 @@ const updateTimeSlot = async (req, res) => {
       }
     }
 
+    //  Nothing to update
     if (updateFields.length === 0) {
       return res.status(400).json({
         success: false,
-        error: "No fields to update"
+        error: "No valid fields to update"
       });
     }
 
-    values.push(id); // For WHERE clause
+    // ⏱ Auto update timestamp
+    updateFields.push(`updated_at = NOW()`);
+
+    values.push(id);
 
     const query = `
-      UPDATE time_slots 
-      SET ${updateFields.join(', ')}
+      UPDATE time_slots
+      SET ${updateFields.join(", ")}
       WHERE id = $${paramCount}
       RETURNING *
     `;
@@ -245,13 +250,23 @@ const updateTimeSlot = async (req, res) => {
       message: "Time slot updated successfully",
       data: rows[0]
     });
+
   } catch (error) {
     console.error("Error updating time slot:", error);
-    
-    if (error.code === '23505') {
+
+    // 🔁 Duplicate (department_id, start_time, end_time)
+    if (error.code === "23505") {
       return res.status(409).json({
         success: false,
-        error: "Duplicate time slot"
+        error: "Duplicate time slot for this department"
+      });
+    }
+
+    // ❗ NOT NULL violation
+    if (error.code === "23502") {
+      return res.status(400).json({
+        success: false,
+        error: "Lecture and laboratory duration cannot be null"
       });
     }
 
@@ -261,11 +276,6 @@ const updateTimeSlot = async (req, res) => {
     });
   }
 };
-
-/**
- * @desc    Delete a time slot
- * @route   DELETE /api/time-slots/:id
- */
 const deleteTimeSlot = async (req, res) => {
   try {
     const { id } = req.params;
@@ -295,7 +305,7 @@ const deleteTimeSlot = async (req, res) => {
     if (scheduleCheck.rows.length > 0) {
       return res.status(400).json({
         success: false,
-        error: "Cannot delete time slot that is being used in schedules"
+        error: "Cannot delete time slot that is being used in schedules , you can edit"
       });
     }
 
@@ -314,16 +324,9 @@ const deleteTimeSlot = async (req, res) => {
     });
   }
 };
-
-/**
- * @desc    Get time slots by department
- * @route   GET /api/time-slots/department/:department_id
- */
 const getTimeSlotsByDepartment = async (req, res) => {
   try {
     const { department_id } = req.params;
-    const { active_only = 'true' } = req.query;
-
     let query = `
       SELECT 
         ts.*,
@@ -337,9 +340,6 @@ const getTimeSlotsByDepartment = async (req, res) => {
 
     const values = [department_id];
     
-    if (active_only === 'true') {
-      query += ` AND ts.is_active = true`;
-    }
 
     query += ` ORDER BY  ts.start_time`;
 
@@ -358,11 +358,6 @@ const getTimeSlotsByDepartment = async (req, res) => {
     });
   }
 };
-
-/**
- * @desc    Get time slots by day
- * @route   GET /api/time-slots/day/:day_of_week
- */
 const getTimeSlotsByDay = async (req, res) => {
   try {
     const { day_of_week } = req.params;
@@ -375,7 +370,6 @@ const getTimeSlotsByDay = async (req, res) => {
         TO_CHAR(ts.end_time, 'HH24:MI') as formatted_end_time
       FROM time_slots ts
       LEFT JOIN departments d ON ts.department_id = d.department_id
-      WHERE ts.is_active = true
       ORDER BY ts.start_time
     `;
 
@@ -394,88 +388,6 @@ const getTimeSlotsByDay = async (req, res) => {
     });
   }
 };
-
-/**
- * @desc    Bulk create time slots (template based)
- * @route   POST /api/time-slots/bulk
- */
-const createBulkTimeSlots = async (req, res) => {
-  try {
-    const { department_id, time_slots } = req.body;
-
-    if (!department_id || !Array.isArray(time_slots) || time_slots.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "Department ID and time slots array are required"
-      });
-    }
-
-    // Validate department exists
-    const deptCheck = await pool.query(
-      "SELECT department_id FROM departments WHERE department_id = $1",
-      [department_id]
-    );
-
-    if (deptCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: "Department not found"
-      });
-    }
-
-    const results = [];
-    const errors = [];
-
-    for (const slot of time_slots) {
-      try {
-        const {  start_time, end_time, slot_type, is_active = true } = slot;
-
-        // Validate required fields
-        if ( !start_time || !end_time || !slot_type) {
-          errors.push({ slot, error: "Missing required fields" });
-          continue;
-        }
-
-        // Insert time slot
-        const query = `
-          INSERT INTO time_slots 
-            (start_time, end_time, department_id, slot_type, is_active)
-          VALUES ($1, $2, $3, $4, $5)
-          ON CONFLICT ( start_time, end_time) DO NOTHING
-          RETURNING id
-        `;
-
-        const { rows } = await pool.query(query, [
-          day_of_week, start_time, end_time, department_id, slot_type, is_active
-        ]);
-
-        if (rows.length > 0) {
-          results.push({ id: rows[0].id, ...slot });
-        } else {
-          errors.push({ slot, error: "Duplicate time slot" });
-        }
-      } catch (error) {
-        errors.push({ slot, error: error.message });
-      }
-    }
-
-    res.status(201).json({
-      success: true,
-      message: `Bulk creation completed`,
-      created: results.length,
-      failed: errors.length,
-      results,
-      errors: errors.length > 0 ? errors : undefined
-    });
-  } catch (error) {
-    console.error("Error creating bulk time slots:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to create bulk time slots"
-    });
-  }
-};
-
 module.exports = {
   getAllTimeSlots,
   getTimeSlotById,
@@ -484,5 +396,4 @@ module.exports = {
   deleteTimeSlot,
   getTimeSlotsByDepartment,
   getTimeSlotsByDay,
-  createBulkTimeSlots
 };

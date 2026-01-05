@@ -22,6 +22,7 @@ import {
   Grid,
   Paper,
   Input,
+  Menu,
 } from "@mantine/core";
 import {
   PlusIcon,
@@ -30,16 +31,22 @@ import {
   HomeModernIcon,
   CheckIcon,
   XMarkIcon,
+
   MagnifyingGlassIcon,
   FunnelIcon,
   ArrowsUpDownIcon,
   XCircleIcon,
+  BuildingOfficeIcon,
+  BuildingStorefrontIcon,
+  ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 import { useForm } from "@mantine/form";
+import { useRouter } from "next/navigation";
 import { useAppDispatch, useAppSelector } from "@/hooks/redux";
 import {
   fetchRooms,
   fetchBlocks,
+  fetchFloors,
   addRoom,
   updateRoom,
   deleteRoom,
@@ -51,15 +58,17 @@ import {
 
 const RoomsManager: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { rooms, blocks, loading, error, successMessage } = useAppSelector((state) => state.rooms);
-  
+  const router = useRouter();
+  const { rooms, blocks, floors, loading, error, successMessage } = useAppSelector((state) => state.rooms);
+
   const [modalOpened, setModalOpened] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
-  
+
   // Filter states
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
+  const [selectedFloor, setSelectedFloor] = useState<string | null>(null);
   const [selectedRoomType, setSelectedRoomType] = useState<string | null>(null);
   const [minCapacity, setMinCapacity] = useState<number | "">("");
   const [maxCapacity, setMaxCapacity] = useState<number | "">("");
@@ -72,15 +81,15 @@ const RoomsManager: React.FC = () => {
   const form = useForm({
     initialValues: {
       block_id: "",
+      floor_id: "",
       room_number: "",
-      room_name: "",
       room_type: "classroom",
       capacity: 30,
-      facilities: [] as string[],
       is_available: true,
     },
     validate: {
       block_id: (value) => (value ? null : "Block is required"),
+      floor_id: (value) => (value ? null : "Floor is required"),
       room_number: (value) => (value.trim().length < 1 ? "Room number is required" : null),
       room_type: (value) => (value ? null : "Room type is required"),
     },
@@ -88,62 +97,35 @@ const RoomsManager: React.FC = () => {
 
   // Room type options
   const roomTypeOptions = [
-    { value: "classroom", label: "Classroom" },
-    { value: "lab", label: "Laboratory" },
-    { value: "office", label: "Office" },
-    { value: "conference", label: "Conference Room" },
-    { value: "library", label: "Library" },
-    { value: "auditorium", label: "Auditorium" },
-    { value: "other", label: "Other" },
+    { value: "classroom", label: "Classroom / Lecture Hall" },
+    { value: "lab", label: "Laboratory (Lab)" },
+     { value: "office", label: "office " },
+
   ];
 
   // Facilities options
-  const facilitiesOptions = [
-    { value: "projector", label: "Projector" },
-    { value: "ac", label: "Air Conditioning" },
-    { value: "computers", label: "Computers" },
-    { value: "whiteboard", label: "Whiteboard" },
-    { value: "sound_system", label: "Sound System" },
-    { value: "lab_equipment", label: "Lab Equipment" },
-    { value: "fume_hood", label: "Fume Hood" },
-    { value: "wifi", label: "WiFi" },
-  ];
 
-  // Block options for filter
-  const blockOptions = [
-  // Always include "All blocks" option
-  { value: '', label: 'All blocks' },
-  // Map your blocks with safety checks
-  ...(Array.isArray(blocks) 
-    ? blocks
-        .filter(block => block && (block.block_name || block.block_id))
+  const blockOptions = useMemo(() => [
+    { value: '', label: 'All blocks' },
+    ...(Array.isArray(blocks)
+      ? blocks
+        .filter(block => block && block.block_id)
         .map(block => ({
-          value: String(block.block_id || block.block_name || ''),
-          label: block.block_name || `Block ${block.block_id || 'Unknown'}`
+          value: block.block_id.toString(),
+          label: block.block_name || `Block ${block.block_id}`
         }))
-    : []
-  )
-];
+      : []
+    )
+  ], [blocks]);
 
-  // Facilities options for filter
-  const allFacilities = useMemo(() => {
-    const facilities = new Set<string>();
-    rooms.forEach(room => {
-      if (room.facilities) {
-        room.facilities.forEach(facility => facilities.add(facility));
-      }
-    });
-    return Array.from(facilities).map(facility => ({
-      value: facility,
-      label: facility.charAt(0).toUpperCase() + facility.slice(1).replace('_', ' '),
-    }));
-  }, [rooms]);
+  // Facilities filter (REMOVED as it is not in the DB)
 
   // Fetch data on component mount
   useEffect(() => {
     console.log("Dispatching fetch actions...");
     dispatch(fetchRooms());
     dispatch(fetchBlocks());
+    dispatch(fetchFloors());
   }, [dispatch]);
 
   // Clear messages after a delay
@@ -170,12 +152,10 @@ const RoomsManager: React.FC = () => {
     setActionLoading(true);
     try {
       const payload: RoomFormData = {
-        block_id: parseInt(values.block_id),
+        floor_id: parseInt(values.floor_id),
         room_number: values.room_number.trim(),
-        room_name: values.room_name?.trim() || undefined,
         room_type: values.room_type,
         capacity: values.capacity && values.capacity > 0 ? values.capacity : undefined,
-        facilities: values.facilities || [],
         is_available: values.is_available,
       };
 
@@ -189,7 +169,7 @@ const RoomsManager: React.FC = () => {
       } else {
         await dispatch(addRoom(payload)).unwrap();
       }
-      
+
       setModalOpened(false);
       form.reset();
       setEditingRoom(null);
@@ -211,13 +191,16 @@ const RoomsManager: React.FC = () => {
   const handleEdit = (room: Room) => {
     console.log('Editing room:', room);
     setEditingRoom(room);
+
+    // Find the floor to set block_id
+    const floor = floors.find(f => f.floor_id === room.floor_id);
+
     form.setValues({
-      block_id: room.block_id?.toString(),
+      block_id: floor?.block_id?.toString() || "",
+      floor_id: room.floor_id?.toString(),
       room_number: room.room_number,
-      room_name: room.room_name || "",
       room_type: room.room_type,
       capacity: room.capacity || 30,
-      facilities: room.facilities || [],
       is_available: room.is_available,
     });
     setModalOpened(true);
@@ -250,6 +233,7 @@ const RoomsManager: React.FC = () => {
   const getRoomTypeColor = (type: string) => {
     const colors: { [key: string]: string } = {
       classroom: "blue",
+      lec: "blue",
       lab: "green",
       office: "orange",
       conference: "purple",
@@ -263,7 +247,8 @@ const RoomsManager: React.FC = () => {
   // Format room type for display
   const formatRoomType = (type: string) => {
     const typeMap: { [key: string]: string } = {
-      classroom: "Classroom",
+      classroom: "Lecture Hall",
+      lec: "Lecture Hall",
       lab: "Laboratory",
       office: "Office",
       conference: "Conference Room",
@@ -279,24 +264,27 @@ const RoomsManager: React.FC = () => {
     let filtered = [...rooms];
 
     // Search query filter
-   if (searchQuery) {
-  const query = searchQuery.toLowerCase();
-  filtered = filtered.filter(room => {
-    const roomNumber = room.room_number?.toLowerCase() || '';
-    const roomName = room.room_name?.toLowerCase() || '';
-    const blockName = room.block_name?.toLowerCase() || '';
-    
-    return (
-      roomNumber.includes(query) ||
-      roomName.includes(query) ||
-      blockName.includes(query)
-    );
-  });
-}
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(room => {
+        const roomNumber = room.room_number?.toLowerCase() || '';
+        const blockName = room.block_name?.toLowerCase() || '';
+
+        return (
+          roomNumber.includes(query) ||
+          blockName.includes(query)
+        );
+      });
+    }
 
     // Block filter
     if (selectedBlock) {
-      filtered = filtered.filter(room => room.block_name === selectedBlock);
+      filtered = filtered.filter(room => room.block_id === parseInt(selectedBlock));
+    }
+
+    // Floor filter
+    if (selectedFloor) {
+      filtered = filtered.filter(room => room.floor_id === parseInt(selectedFloor));
     }
 
     // Room type filter
@@ -318,19 +306,10 @@ const RoomsManager: React.FC = () => {
       filtered = filtered.filter(room => room.is_available === isAvailable);
     }
 
-    // Facilities filter
-    if (selectedFacilities.length > 0) {
-      filtered = filtered.filter(room =>
-        selectedFacilities.every(facility =>
-          room.facilities?.includes(facility)
-        )
-      );
-    }
-
     // Sorting
     filtered.sort((a, b) => {
       let aValue: any, bValue: any;
-      
+
       switch (sortBy) {
         case "room_number":
           aValue = a.room_number;
@@ -355,23 +334,13 @@ const RoomsManager: React.FC = () => {
     });
 
     return filtered;
-  }, [
-    rooms,
-    searchQuery,
-    selectedBlock,
-    selectedRoomType,
-    minCapacity,
-    maxCapacity,
-    selectedStatus,
-    selectedFacilities,
-    sortBy,
-    sortOrder
-  ]);
+  }, [rooms, searchQuery, selectedBlock, selectedFloor, selectedRoomType, minCapacity, maxCapacity, selectedStatus, sortBy, sortOrder]);
 
   // Clear all filters
   const clearFilters = () => {
     setSearchQuery("");
     setSelectedBlock(null);
+    setSelectedFloor(null);
     setSelectedRoomType(null);
     setMinCapacity("");
     setMaxCapacity("");
@@ -383,6 +352,7 @@ const RoomsManager: React.FC = () => {
   const hasActiveFilters = () => {
     return searchQuery ||
       selectedBlock ||
+      selectedFloor ||
       selectedRoomType ||
       minCapacity !== "" ||
       maxCapacity !== "" ||
@@ -400,13 +370,51 @@ const RoomsManager: React.FC = () => {
           </Title>
           <Text c="dimmed">Manage rooms across all floors and blocks</Text>
         </div>
-        <Button
-          leftSection={<PlusIcon className="h-5 w-5" />}
-          onClick={() => setModalOpened(true)}
-          loading={loading}
-        >
-          Add Room
-        </Button>
+        <Group>
+          <Menu shadow="md" width={200}>
+            <Menu.Target>
+              <Button
+                variant="light"
+                color="blue"
+                rightSection={<ChevronDownIcon className="h-4 w-4" />}
+              >
+                Manage
+              </Button>
+            </Menu.Target>
+
+            <Menu.Dropdown>
+              <Menu.Label>Navigation</Menu.Label>
+              <Menu.Item
+                leftSection={<BuildingStorefrontIcon className="h-4 w-4" />}
+                onClick={() => router.push('/dashboard/admin/block')}
+              >
+                Manage Blocks
+              </Menu.Item>
+              <Menu.Item
+                leftSection={<BuildingOfficeIcon className="h-4 w-4" />}
+                onClick={() => router.push('/dashboard/admin/floor')}
+              >
+                Manage Floors
+              </Menu.Item>
+              <Menu.Divider />
+              <Menu.Label>Actions</Menu.Label>
+              <Menu.Item
+                leftSection={<PlusIcon className="h-4 w-4" />}
+                onClick={() => setModalOpened(true)}
+              >
+                Add New Room
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+
+          <Button
+            leftSection={<PlusIcon className="h-5 w-5" />}
+            onClick={() => setModalOpened(true)}
+            loading={loading}
+          >
+            Add Room
+          </Button>
+        </Group>
       </Group>
 
       {/* Search and Filter Section */}
@@ -470,7 +478,24 @@ const RoomsManager: React.FC = () => {
                     placeholder="All blocks"
                     data={blockOptions}
                     value={selectedBlock}
-                    onChange={setSelectedBlock}
+                    onChange={(value) => {
+                      setSelectedBlock(value);
+                      setSelectedFloor(null); // Reset floor when block changes
+                    }}
+                    clearable
+                    searchable
+                  />
+
+                  {/* Floor Filter */}
+                  <Select
+                    label="Filter by Floor"
+                    placeholder="All floors"
+                    data={floors
+                      .filter(f => !selectedBlock || f.block_id === parseInt(selectedBlock))
+                      .map(f => ({ value: f.floor_id.toString(), label: `G${f.floor_number} (${f.block_code})` }))
+                    }
+                    value={selectedFloor}
+                    onChange={setSelectedFloor}
                     clearable
                     searchable
                   />
@@ -507,30 +532,19 @@ const RoomsManager: React.FC = () => {
                       <NumberInput
                         placeholder="Min"
                         value={minCapacity}
-                        onChange={(value) => setMinCapacity(value === '' ? '' : Number(value))}                        min={1}
+                        onChange={(value) => setMinCapacity(value === '' ? '' : Number(value))} min={1}
                         className="flex-1"
                       />
                       <Text size="sm">to</Text>
                       <NumberInput
                         placeholder="Max"
                         value={maxCapacity}
-                         onChange={(value) => setMaxCapacity(value === '' ? '' : Number(value))}
+                        onChange={(value) => setMaxCapacity(value === '' ? '' : Number(value))}
                         min={1}
                         className="flex-1"
                       />
                     </Group>
                   </div>
-
-                  {/* Facilities Filter */}
-                  <MultiSelect
-                    label="Filter by Facilities"
-                    placeholder="Select facilities"
-                    data={allFacilities}
-                    value={selectedFacilities}
-                    onChange={setSelectedFacilities}
-                    clearable
-                    searchable
-                  />
                 </Group>
 
                 {/* Sort Options */}
@@ -569,7 +583,12 @@ const RoomsManager: React.FC = () => {
                 )}
                 {selectedBlock && (
                   <Badge variant="light" color="green">
-                    Block: {selectedBlock}
+                    Block: {blocks.find(b => b.block_id === parseInt(selectedBlock || "0"))?.block_name || selectedBlock}
+                  </Badge>
+                )}
+                {selectedFloor && (
+                  <Badge variant="light" color="cyan">
+                    Floor: G{floors.find(f => f.floor_id === parseInt(selectedFloor || "0"))?.floor_number}
                   </Badge>
                 )}
                 {selectedRoomType && (
@@ -587,11 +606,6 @@ const RoomsManager: React.FC = () => {
                     Capacity: {minCapacity !== "" ? `≥${minCapacity}` : ""}
                     {minCapacity !== "" && maxCapacity !== "" && " - "}
                     {maxCapacity !== "" ? `≤${maxCapacity}` : ""}
-                  </Badge>
-                )}
-                {selectedFacilities.length > 0 && (
-                  <Badge variant="light" color="purple">
-                    Facilities: {selectedFacilities.length}
                   </Badge>
                 )}
               </Group>
@@ -672,11 +686,9 @@ const RoomsManager: React.FC = () => {
                 <Table.Tr>
                   <Table.Th>#</Table.Th>
                   <Table.Th>Room Number</Table.Th>
-                  <Table.Th>Room Name</Table.Th>
                   <Table.Th>Location</Table.Th>
                   <Table.Th>Type</Table.Th>
                   <Table.Th>Capacity</Table.Th>
-                  <Table.Th>Facilities</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th>Actions</Table.Th>
                 </Table.Tr>
@@ -691,11 +703,8 @@ const RoomsManager: React.FC = () => {
                       <Text fw={500}>{room.room_number}</Text>
                     </Table.Td>
                     <Table.Td>
-                      <Text>{room.room_name || "—"}</Text>
-                    </Table.Td>
-                    <Table.Td>
                       <Badge variant="light" color="blue">
-                        {room.block_name}-({room.block_code})
+                        {room.block_code}-G{room.floor_number}
                       </Badge>
                     </Table.Td>
                     <Table.Td>
@@ -705,24 +714,6 @@ const RoomsManager: React.FC = () => {
                     </Table.Td>
                     <Table.Td>
                       <Text>{room.capacity || "—"}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      {room.facilities && room.facilities.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {room.facilities.slice(0, 2).map((facility, idx) => (
-                            <Badge key={idx} variant="dot" size="xs">
-                              {facility}
-                            </Badge>
-                          ))}
-                          {room.facilities.length > 2 && (
-                            <Badge variant="light" size="xs">
-                              +{room.facilities.length - 2}
-                            </Badge>
-                          )}
-                        </div>
-                      ) : (
-                        <Text c="dimmed" size="sm">None</Text>
-                      )}
                     </Table.Td>
                     <Table.Td>
                       <Badge
@@ -784,13 +775,51 @@ const RoomsManager: React.FC = () => {
               searchable
               nothingFoundMessage="No block found"
               {...form.getInputProps("block_id")}
+              onChange={(value) => {
+                form.setFieldValue("block_id", value || "");
+                form.setFieldValue("floor_id", "");
+                form.setFieldValue("room_number", "");
+              }}
+            />
+            <Select
+              label="Floor"
+              placeholder="Select a floor"
+              data={floors
+                .filter(f => f.block_id === parseInt(form.values.block_id))
+                .map(f => ({ value: f.floor_id.toString(), label: `G${f.floor_number}` }))
+              }
+              required
+              disabled={!form.values.block_id}
+              {...form.getInputProps("floor_id")}
+              onChange={(value) => {
+                form.setFieldValue("floor_id", value || "");
+                form.setFieldValue("room_number", "");
+              }}
             />
             <Grid>
               <Grid.Col span={6}>
-                <TextInput
+                <Select
                   label="Room Number"
-                  placeholder="e.g., 101, A12"
+                  placeholder="Select room number"
+                  data={(() => {
+                    const floor = floors.find(f => f.floor_id === parseInt(form.values.floor_id));
+                    if (!floor || !floor.room_capacity) return [];
+
+                    // Generate all possible room numbers
+                    const allRooms = Array.from({ length: floor.room_capacity }, (_, i) => {
+                      const num = (i + 1).toString().padStart(2, '0');
+                      return { value: `R${num}`, label: `R${num}` };
+                    });
+
+                    // Filter out already registered rooms (except when editing)
+                    const existingRoomNumbers = rooms
+                      .filter(r => r.floor_id === parseInt(form.values.floor_id) && (!editingRoom || r.room_id !== editingRoom.room_id))
+                      .map(r => r.room_number);
+
+                    return allRooms.filter(ar => !existingRoomNumbers.includes(ar.value));
+                  })()}
                   required
+                  disabled={!form.values.floor_id}
                   {...form.getInputProps("room_number")}
                 />
               </Grid.Col>
@@ -804,27 +833,11 @@ const RoomsManager: React.FC = () => {
               </Grid.Col>
             </Grid>
 
-            <TextInput
-              label="Room Name"
-              placeholder="e.g., Chemistry Lab, Main Hall"
-              {...form.getInputProps("room_name")}
-            />
-
             <NumberInput
               label="Capacity"
               placeholder="Number of people"
               min={1}
               {...form.getInputProps("capacity")}
-            />
-
-            <MultiSelect
-              label="Facilities"
-              placeholder="Select facilities"
-              data={facilitiesOptions}
-              clearable
-              searchable
-              nothingFoundMessage="Nothing found"
-              {...form.getInputProps("facilities")}
             />
 
             <Select
@@ -838,15 +851,15 @@ const RoomsManager: React.FC = () => {
             />
 
             <Group justify="flex-end" mt="md">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={handleCloseModal}
                 disabled={actionLoading}
               >
                 Cancel
               </Button>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 loading={actionLoading}
               >
                 {editingRoom ? "Update Room" : "Add Room"}

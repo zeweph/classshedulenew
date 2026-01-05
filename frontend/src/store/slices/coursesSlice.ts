@@ -9,7 +9,7 @@ export interface Course {
   course_name: string;
   credit_hour: number;
   category: string;
-   lec_hr: number;
+  lec_hr: number;
   lab_hr: number;
 }
 export interface Course {
@@ -19,9 +19,9 @@ export interface Course {
   credit_hour: number;
   lec_hr: number;
   lab_hr: number;
+  tut_hr: number;
   category: string;
 }
-
 // New Instructor Assignment Interfaces
 export interface Instructor {
   instructor_id: number;
@@ -34,9 +34,9 @@ export interface CourseAssignment {
   assignment_id?: number;
   course_id: number;
   instructor_id: number;
-  full_name: string;
+  instructor_name: string;
   email: string;
-  department?: string;
+  department_name?: string;
   course_status: string;
   created_at: string;
   updated_at: string;

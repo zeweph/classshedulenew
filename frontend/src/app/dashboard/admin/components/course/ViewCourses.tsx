@@ -224,6 +224,7 @@ const ViewCourses: React.FC<ViewCoursesProps> = ({
                 <Table.Th className="text-center">CREDITS</Table.Th>
                 <Table.Th className="text-center">LEC.HR</Table.Th>
                 <Table.Th className="text-center">LAB.HR</Table.Th>
+                <Table.Th className="text-center">TUT.HR</Table.Th>
                 <Table.Th>CATEGORY</Table.Th>
                 <Table.Th className="pr-8 text-center">ACTIONS</Table.Th>
               </Table.Tr>
@@ -328,6 +329,18 @@ const ViewCourses: React.FC<ViewCoursesProps> = ({
                         radius="md"
                       >
                         {course.lab_hr || 0}
+                      </Badge>
+                    </Table.Td>
+
+                    <Table.Td className="text-center">
+                      <Badge
+                        color="orange"
+                        variant="light"
+                        size="lg"
+                        className="font-semibold px-3"
+                        radius="md"
+                      >
+                        {course.tut_hr || 0}
                       </Badge>
                     </Table.Td>
 

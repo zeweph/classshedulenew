@@ -62,6 +62,9 @@ const studentimportRoutes = require('./src/routes/studentImportRoutes');
 const chatRoute = require("./src/routes/chatRoutes");
 const courseBatches = require("./src/routes/courseBatchRoutes");
 const timeSlote = require('./src/routes/timeSlotRoutes');
+const section_rooms = require('./src/routes/sectionRoomRoutes');
+const courseSectionRoutes = require('./src/routes/courseSection');
+
 
 app.use("/api/auth", authRoutes);  // /api/auth/login, /api/auth/forgot-password
 app.use("/api/users", userRoutes); // /api/users
@@ -81,7 +84,8 @@ app.use("/api/importstudents", studentimportRoutes);
 app.use("/api/chat", chatRoute) // /api/chat
 app.use("/api/course-batches", courseBatches);
 app.use("/api/time-slots", timeSlote); // api/time-slots
-
+app.use("/api/section-rooms", section_rooms);
+app.use('/api/course-sections', courseSectionRoutes);
 // Root route
 app.get("/", (_req, res) => {
     console.log("API running");

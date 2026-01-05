@@ -129,7 +129,7 @@ const StudentRegistrationPage: React.FC = () => {
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [profileImage, setProfileImage] = useState<File | null>(null);
   const [profileImagePreview, setProfileImagePreview] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'registration' | 'students'>('registration');
+  const [activeTab, setActiveTab] = useState<'registration' | 'students'>('students');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [register_edit, setregister_edit] = useState("Student Registration");
 

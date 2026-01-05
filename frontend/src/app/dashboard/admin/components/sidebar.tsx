@@ -26,6 +26,7 @@ import {
   BuildingOffice2Icon,
   Cog6ToothIcon,
   UserPlusIcon,
+  Squares2X2Icon,
   BuildingStorefrontIcon,
   BuildingOfficeIcon,
   HomeModernIcon,
@@ -80,6 +81,7 @@ export const AdminSidebar = ({
       '/dashboard/admin/managedepartment': 'manageDepartments',
       '/dashboard/admin/managedepartment/assignhead': 'assignHead',
       '/dashboard/admin/block': 'blocks',
+      '/dashboard/admin/floor': 'floors',
       '/dashboard/admin/room': 'rooms',
       '/dashboard/admin/batch': 'batch',
       '/dashboard/admin/semester': 'semester',
@@ -165,6 +167,7 @@ export const AdminSidebar = ({
         label: 'Room Management',
         items: [
           { key: "blocks", icon: BuildingStorefrontIcon, label: "Manage Blocks" },
+          { key: "floors", icon: Squares2X2Icon, label: "Manage Floor" },
           { key: "rooms", icon: HomeModernIcon, label: "Manage Rooms" },
         ]
       },
@@ -211,7 +214,7 @@ export const AdminSidebar = ({
     if (!menu) return false;
     
     return menu.items.some(item => item.key === currentActiveSection);
-  }, [currentActiveSection, menuDefinitions.submenus]);
+  }, [currentActiveSection, menuDefinitions]);
 
   // Optimized handler for setting active section
   const handleSetActiveSection = useCallback((section: string) => {
@@ -229,6 +232,7 @@ export const AdminSidebar = ({
       "manageDepartments": "/dashboard/admin/managedepartment",
       "assignHead": "/dashboard/admin/managedepartment/assignhead",
       "blocks": "/dashboard/admin/block",
+      "floors": "/dashboard/admin/floor",
       "rooms": "/dashboard/admin/room",
       "batch": "/dashboard/admin/batch",
       "semester": "/dashboard/admin/semester",

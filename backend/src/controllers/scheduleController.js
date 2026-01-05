@@ -18,7 +18,6 @@ const formatTime = (timeString) => {
     return timeString;
   }
 };
-
 // Helper function to calculate classes per day
 const getClassesPerDay = (schedules) => {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -30,7 +29,6 @@ const getClassesPerDay = (schedules) => {
   
   return classesPerDay;
 };
-
 // get today schedule 
 const getTodaySchedule = async (req, res) => {
   const { day } = req.query;
@@ -132,7 +130,6 @@ const create = async (req, res) => {
           "SELECT * FROM day_schedules WHERE day_of_week = $1",
           [day.day_of_week]
         );
-
         if (dayResult.rows.length > 0) {
 
           for (const course of day.courses) {
@@ -340,7 +337,6 @@ const getAll = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch schedules" });
   }
 };
-
 const Delete = async (req, res) => {
   const id = req.params.id;
   try {
@@ -351,7 +347,6 @@ const Delete = async (req, res) => {
     res.status(500).json({ error: "Failed to delete schedule" });
   }
 };
-
 const permission = async (req, res) => {
   const id = req.params.id;
   const { status } = req.body;
@@ -389,7 +384,6 @@ const permission = async (req, res) => {
     res.status(500).json({ message: "Failed to update status" });
   }
 };
-
 const update = async (req, res) => {
   const scheduleId = req.params.id;
   const { batch, semester, section, department_id, status, schedule } = req.body;
@@ -488,7 +482,6 @@ const update = async (req, res) => {
     client.release();
   }
 };
-
 const Batch = async (req, res) => {
   const { batch, semester, section, department_id } = req.query;
 
@@ -553,7 +546,6 @@ const Batch = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch schedules" });
   }
 };
-
 // GET /api/instructors/:id/schedule - Get instructor's teaching schedule
 const getInstructorSchedule = async (req, res) => {
   const { id } = req.params;
@@ -631,7 +623,6 @@ const getInstructorSchedule = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch instructor schedule" });
   }
 };
-
 // GET /api/instructors/:id - Get instructor information
 const getInstructorInfo = async (req, res) => {
   const { id } = req.params;
@@ -671,7 +662,6 @@ const getInstructorInfo = async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch instructor info' });
   }
 };
-
 // GET /api/instructors/me/schedule - Get current instructor's schedule (from session)
 const getMySchedule = async (req, res) => {
   try {
@@ -773,7 +763,6 @@ const getMySchedule = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch schedule" });
   }
 };
-
 // GET /api/instructors - Get all instructors (for admin use)
 const getAllInstructors = async (req, res) => {
   try {
@@ -804,7 +793,6 @@ const getAllInstructors = async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch instructors' });
   }
 };
-
 // Get available rooms for a specific time slot (without floors)
 const getAvailableRooms = async (req, res) => {
   const { day, start_time, end_time, room_type, capacity } = req.query;
@@ -855,7 +843,6 @@ const getAvailableRooms = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch available rooms" });
   }
 };
-
 // Get room hierarchy (blocks -> rooms)
 const getRoomHierarchy = async (req, res) => {
   try {
@@ -915,58 +902,33 @@ const getRoomHierarchy = async (req, res) => {
   }
 }
 const autoGenerateSchedule = async (req, res) => {
-  const { scheduleData } = req.body;
-
-  if (!scheduleData) {
-    return res.status(400).json({ error: "Missing scheduleData" });
-  }
-
-  const { batch_id, semester_id, section, department_id } = scheduleData;
-
-  if (!batch_id || !semester_id || !section || !department_id) {
-    return res.status(400).json({
-      error: "batch_id, semester_id, section, department_id are required",
-    });
-  }
-
+  const { batch_id, semester_id, section, department_id } = req.body.scheduleData;
   const client = await pool.connect();
+ 
+  const MAX_INSTRUCTOR_LOAD = 6;
+  const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday"];
+  const conflictReport = [];
+  const assignments = [];
 
   try {
     await client.query("BEGIN");
-
-    /* ----------------------------------------------------
-       1. Move existing published schedule to draft
-    ----------------------------------------------------- */
-    await client.query(
-      `UPDATE schedules
-       SET status='draft', updated_at=NOW()
-       WHERE batch_id=$1
-         AND semester_id=$2
-         AND section=$3
-         AND department_id=$4
-         AND status='published'`,
+      await client.query(
+      "UPDATE schedules SET status='draft' WHERE batch_id=$1 and semester_id=$2 and section=$3 and status='published' and department_id=$4",
       [batch_id, semester_id, section, department_id]
-    );
+    ); 
 
-    /* ----------------------------------------------------
-       2. Create new schedule
-    ----------------------------------------------------- */
+
+    /* ---------------- CREATE SCHEDULE ---------------- */
     const schedRes = await client.query(
-      `INSERT INTO schedules
-       (department_id, batch_id, semester_id, section, status)
+      `INSERT INTO schedules (department_id, batch_id, semester_id, section, status)
        VALUES ($1,$2,$3,$4,'published')
        RETURNING id`,
       [department_id, batch_id, semester_id, section]
     );
-
     const scheduleId = schedRes.rows[0].id;
 
-    /* ----------------------------------------------------
-       3. Create day_schedules
-    ----------------------------------------------------- */
-    const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const dayMap = {}; // dayName -> day_schedule_id
-
+    /* ---------------- DAYS ---------------- */
+    const dayMap = {};
     for (const day of DAYS) {
       const d = await client.query(
         `INSERT INTO day_schedules (schedule_id, day_of_week)
@@ -975,186 +937,274 @@ const autoGenerateSchedule = async (req, res) => {
       );
       dayMap[day] = d.rows[0].id;
     }
-
-    /* ----------------------------------------------------
-       4. Fetch all courses for batch & semester
-    ----------------------------------------------------- */
-    const coursesRes = await client.query(
-      `SELECT cb.course_id, c.course_name
-       FROM course_batch cb
-       JOIN course c ON cb.course_id = c.course_id
-       WHERE cb.department_id=$1
-         AND cb.batch=$2
-         AND cb.semester_id=$3
-       ORDER BY c.course_id`,
-      [department_id, batch_id, semester_id]
+   const timslot = await client.query(
+    `SELECT * FROM time_slots
+     WHERE department_id = $1`,
+    [department_id]
     );
-
-    if (coursesRes.rowCount === 0) {
-      throw new Error("No courses found for this batch & semester");
-    }
-
-    /* ----------------------------------------------------
-       5. Fetch available rooms
-    ----------------------------------------------------- */
+    /* ---------------- SLOTS ---------------- */
+    const slots = await generateTimeSlots(timslot); // smart + break included
+    console.log('time slote', slots);
+    
+    /* ---------------- COURSES ---------------- */
+          const coursesRes = await client.query(
+          `SELECT 
+            c.course_id,
+            c.lec_hr,
+            c.tut_hr,
+            c.lab_hr
+          FROM course_batch cb
+          JOIN course c ON cb.course_id = c.course_id
+          WHERE cb.department_id = $1
+            AND cb.batch = $2
+            AND cb.semester_id = $3`,
+          [department_id, batch_id, semester_id]
+    );
+  
+    /* ---------------- ROOMS ---------------- */
     const roomsRes = await client.query(
-      `SELECT r.room_id
-       FROM departments_rooms dr
-       JOIN rooms r ON dr.room_id=r.room_id
-       WHERE dr.department_id=$1
-         AND dr.status='active'
+      `SELECT r.room_id, r.room_type
+       FROM section_rooms sr
+       JOIN rooms r ON sr.room_id=r.room_id
+       WHERE sr.department_id=$1 AND
+         sr.batch_id=$2 AND sr.section=$3
          AND r.is_available=true`,
-      [department_id]
+      [department_id, batch_id, section]
     );
-
-    if (roomsRes.rowCount === 0) {
-      throw new Error("No available rooms");
+   
+    /* ---------------- PREPARE SESSIONS ---------------- */
+    const allSessions = [];
+    for (const course of coursesRes.rows) {
+      allSessions.push(...calculateCourseSessions(course, timslot));
     }
+    const totalLectureTutorial = (allSessions.filter(s => s.type === 'LEC').length);//*timslot.rows[0].lecture_duration;
+    const totalLab = (allSessions.filter(s => s.type === 'LAB').length);//*timslot.rows[0].labratory_duration;
 
-    /* ----------------------------------------------------
-       6. Fetch time slots (NO day_of_week)
-    ----------------------------------------------------- */
-    const slotsRes = await client.query(
-      `SELECT start_time, end_time, slot_type
-       FROM time_slots
-       WHERE department_id=$1
-         AND is_active=true
-       ORDER BY start_time`,
-      [department_id]
-    );
+        console.log("Total Lecture + Tutorial class :", totalLectureTutorial);
+        console.log("Total Lab class:", totalLab);
+        console.log("All course", allSessions);
+    
+    const courseDayUsage = {};
+    let k = 0;
 
-    if (slotsRes.rowCount === 0) {
-      throw new Error("No active time slots found");
-    }
-
-    /* ----------------------------------------------------
-       7. Tracking helpers
-    ----------------------------------------------------- */
-    const assignments = []; // conflict tracking
-    const dayCount = {};    // day_schedule_id -> number
-    const courseUsage = {}; // day_schedule_id -> Set(course_id)
-    const MIN_CLASSES_PER_DAY = 2;
-
-    /* ----------------------------------------------------
-       8. Auto Scheduling Logic
-    ----------------------------------------------------- */
-    for (const [dayName, dayScheduleId] of Object.entries(dayMap)) {
-
-      dayCount[dayScheduleId] = 0;
-      courseUsage[dayScheduleId] = new Set();
-
-      for (const slot of slotsRes.rows) {
-
-        if (slot.slot_type === "break") continue;
-
-        // Prevent same time repeat on same day
-        const timeUsed = assignments.find(a =>
-          a.dayScheduleId === dayScheduleId &&
-          a.start === slot.start_time &&
-          a.end === slot.end_time
-        );
-        if (timeUsed) continue;
-
-        let placed = false;
-
-        for (const course of coursesRes.rows) {
-
-          // ❌ prevent same course twice in same day
-          if (courseUsage[dayScheduleId].has(course.course_id)) continue;
-
-          const instructorsRes = await client.query(
-            `SELECT cia.instructor_id
-             FROM course_instructor_assign cia
-             JOIN users u ON cia.instructor_id=u.id
-             WHERE cia.course_id=$1
-               AND u.status='Active'`,
-            [course.course_id]
-          );
-
-          if (instructorsRes.rowCount === 0) continue;
-
+    /* ---------------- SCHEDULER ---------------- */
+    for (const session of allSessions) {
+     
+      let placed = false;
+      // Smart scheduling: try LEC first, then LAB
+      const filteredSlots = slots.filter(s => s.slot_type === session.type);
+      for (const [dayName, dayScheduleId] of Object.entries(dayMap)) {
+        courseDayUsage[dayScheduleId] ??= new Set();
+        if (courseDayUsage[dayScheduleId].has(session.course_id)) continue;
+        for (const slot of filteredSlots) {
           for (const room of roomsRes.rows) {
-            for (const inst of instructorsRes.rows) {
+            // 🧪 Room type check
+            if ((session.type === "LAB" && room.room_type === "classroom") || (session.type === "LEC" && room.room_type === "lab")) continue;
+            //  Instructor for THIS course only
+            const instRes = await client.query(
+              `SELECT instructor_id
+               FROM course_instructor_assign
+               WHERE course_id=$1`,
+              [session.course_id]
+            );
+             if (instRes.rowCount === 0) {
+                throw new Error("No available instructor for this section");
+              }
 
-              // Instructor or room conflict
-              const conflict = assignments.find(a =>
-                a.dayScheduleId === dayScheduleId &&
-                a.start === slot.start_time &&
-                a.end === slot.end_time &&
-                (a.room === room.room_id ||
-                 a.instructor === inst.instructor_id)
-              );
+            const instructorId = instRes.rows[0].instructor_id;
+            //  Max instructor load/day
+            const loadRes = await client.query(
+              `SELECT COUNT(*) as count
+               FROM day_courses dc
+               JOIN day_schedules ds ON dc.day_schedule_id=ds.id
+               JOIN schedules s ON ds.schedule_id=s.id
+               WHERE dc.instructor_id=$1
+                 AND ds.day_of_week=$2
+                 AND s.status='published'`,
+              [instructorId, dayName]
+            );
+            if (loadRes.rows[0].count >= MAX_INSTRUCTOR_LOAD) continue;
 
-              if (conflict) continue;
+            //  Global instructor conflict
+          const globalConflict = await client.query(
+              `SELECT 1
+               FROM day_courses dc
+               JOIN day_schedules ds ON dc.day_schedule_id=ds.id
+               JOIN schedules s ON ds.schedule_id=s.id
+               WHERE dc.instructor_id=$1
+                 AND ds.day_of_week=$2
+                 AND dc.start_time=$3
+                 AND dc.end_time=$4
+                 AND s.status='published'
+               LIMIT 1`,
+              [instructorId, dayName, slot.start_time, slot.end_time]
+            );
+            if (globalConflict.rowCount > 0) continue;
 
-              // INSERT
-              await client.query(
-                `INSERT INTO day_courses
-                 (day_schedule_id, course_id, room_id, instructor_id, start_time, end_time)
-                 VALUES ($1,$2,$3,$4,$5,$6)`,
-                [
-                  dayScheduleId,
-                  course.course_id,
-                  room.room_id,
-                  inst.instructor_id,
-                  slot.start_time,
-                  slot.end_time,
-                ]
-              );
-
-              assignments.push({
+            // Local conflict
+            const localConflict = assignments.find(a =>
+              a.day === dayName &&
+              a.start === slot.start_time &&
+              (a.room === room.room_id || a.instructor === instructorId)
+            );
+            if (localConflict) continue;
+            console.log('hour start on ',++k,'-i', slot.start_time ,'-', slot.end_time, '-', slot.slot_type, '-day:',dayScheduleId)
+            // INSERT
+            await client.query(
+              `INSERT INTO day_courses
+               (day_schedule_id, course_id, room_id, instructor_id, start_time, end_time,session_type)
+               VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+              [
                 dayScheduleId,
-                start: slot.start_time,
-                end: slot.end_time,
-                room: room.room_id,
-                instructor: inst.instructor_id,
-              });
+                session.course_id,
+                room.room_id,
+                instructorId,
+                slot.start_time,
+                slot.end_time,
+                session.type
+              ]
+            );
 
-              courseUsage[dayScheduleId].add(course.course_id);
-              dayCount[dayScheduleId]++;
-              placed = true;
-              break;
-            }
-            if (placed) break;
+            assignments.push({
+              dayScheduleId:dayScheduleId,
+              course_id: session.course_id,
+              type: session.type,
+              day: dayName,
+              start: slot.start_time,
+              end: slot.end_time,
+              room: room.room_id,
+              instructor: instructorId
+            });
+            courseDayUsage[dayScheduleId].add(session.course_id);
+            placed = true;
+            break;
           }
           if (placed) break;
         }
+        if (placed) break;
+      }
+
+      if (!placed) {
+        conflictReport.push({
+          course_id: session.course_id,
+          session_type: session.type,
+          reason: "No available slot / instructor / room"
+        });
       }
     }
-
-    /* ----------------------------------------------------
-       9. Validate minimum per day
-    ----------------------------------------------------- */
-    for (const [dayScheduleId, count] of Object.entries(dayCount)) {
-      if (count < MIN_CLASSES_PER_DAY) {
-        throw new Error(
-          `A day has only ${count} classes. Minimum required is ${MIN_CLASSES_PER_DAY}.`
-        );
-      }
-    }
-
+    console.log('All coures and schedule ', assignments);
     await client.query("COMMIT");
 
-    res.json({
-      success: true,
-      message: "Schedule auto-generated successfully",
+    return res.json({
+      success: conflictReport.length === 0,
       schedule_id: scheduleId,
-      total_courses: coursesRes.rowCount,
-      total_assignments: assignments.length,
+      total_sessions: assignments.length,
+      conflicts: conflictReport
     });
 
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error("Auto-generate error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(400).json({ error: err.message });
   } finally {
     client.release();
   }
 };
+function generateTimeSlots(timslot) {
+  const slots = [];
 
+  const BREAK_START = "6:30";
+  const BREAK_END = "7:30";
 
+  for (const row of timslot.rows) {
+    const dayStart = row.start_time;
+    const dayEnd = row.end_time;
+    const totalHours = diffHours(dayStart, dayEnd);
+    const lectureEnd = addHours(dayStart, Math.floor(totalHours / 2));
+    console.log("Lecture end:", lectureEnd);
+    console.log('start', row.start_time);
+    console.log('end', row.end_time);
+    /* ---------- LECTURE SLOTS (MORNING) ---------- */
+    let lecTime = addHours(dayStart, 0);
+    while (timeLessThan(addHours(lecTime, row.lecture_duration), lectureEnd)) {
+      const slotStart = lecTime;
+      const slotEnd = addHours(lecTime, row.lecture_duration);
+      // ⏸ Skip if overlaps lunch/prayer break
+      if (!(slotEnd <= BREAK_START || slotStart <= BREAK_END)) {
+        lecTime = BREAK_END; // jump past break
+        continue;
+      }
 
+      slots.push({
+        start_time: slotStart,
+        end_time: slotEnd,
+        slot_type: "LEC"
+      });
 
+      lecTime = slotEnd;
+    }
+
+    /* ---------- LAB SLOTS (AFTERNOON) ---------- */
+    console.log("Trying LEC slot:", lecTime, addHours(lecTime, row.lecture_duration));
+
+    let labTime = BREAK_END;
+
+    while (
+      row.labratory_duration > 0 &&
+      timeLessThan(addHours(labTime, row.labratory_duration), dayEnd)
+    ) {
+      const slotStart = labTime;
+      const slotEnd = addHours(labTime, row.labratory_duration);
+
+      // ⏸ Skip if overlaps lunch/prayer break
+      if (!(slotEnd <= BREAK_START || slotStart >= BREAK_END)) {
+        labTime = BREAK_END; // jump past break
+        continue;
+      }
+
+      slots.push({
+        start_time: slotStart,
+        end_time: slotEnd,
+        slot_type: "LAB"
+      });
+
+      labTime = slotEnd;
+    }
+  }
+
+  return slots;
+}
+function calculateCourseSessions(course, timslot) {
+  const sessions = [];
+  let lecSlots, labSlots;
+  for (const row of timslot.rows) {
+    lecSlots = Math.ceil((course.lec_hr + course.tut_hr) / row.lecture_duration);
+    labSlots = Math.ceil(course.lab_hr / row.labratory_duration);
+  
+    for (let i = 0; i < lecSlots; i++) {
+      sessions.push({ course_id: course.course_id, type: "LEC", totallec_hr:row.lecture_duration + row.lecture_duration});
+    }
+    for (let i = 0; i < labSlots; i++) {
+      sessions.push({ course_id: course.course_id, type: "LAB" , totallab_hr:row.labratory_duration+row.labratory_duration});
+    }
+  }
+
+  return sessions;
+}
+function addHours(time, hours) {
+  const [h, m] = time.split(":").map(Number);
+  const d = new Date(2000, 1, 1, h, m);
+  d.setHours(d.getHours() + hours);
+  return d.toTimeString().slice(0, 5);
+}
+
+function diffHours(start, end) {
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  return (eh + em / 60) - (sh + sm / 60);
+}
+function timeLessThan(t1, t2) {
+  return t1 <= t2;
+}
 
 
 module.exports = {

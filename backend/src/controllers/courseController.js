@@ -14,17 +14,17 @@ const getCourse = async (req, res) => {
 // Create a new course
 const createCourse = async (req, res) => {
   try {
-    const { course_code, course_name, credit_hour, lec_hr, lab_hr, category } = req.body;
+    const { course_code, course_name, credit_hour, lec_hr, lab_hr, tut_hr, category } = req.body;
     if (!course_code || !course_name.trim() || !credit_hour || !category) {
       return res.status(400).json({ error: "All course fields are required" });
     }
 
     // Insert course and return new ID
     const insertResult = await pool.query(
-      `INSERT INTO Course (course_code, course_name, credit_hour, lec_hr, lab_hr, category) 
-       VALUES ($1, $2, $3, $4, $5, $6) 
+      `INSERT INTO Course (course_code, course_name, credit_hour, lec_hr, lab_hr, tut_hr, category) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7) 
        RETURNING course_id`,
-      [course_code, course_name, credit_hour, lec_hr || 0, lab_hr || 0, category]
+      [course_code, course_name, credit_hour, lec_hr || 0, lab_hr || 0, tut_hr || 0, category]
     );
 
     const newCourseId = insertResult.rows[0].course_id;
@@ -50,7 +50,7 @@ const createCourse = async (req, res) => {
 const updateCourse = async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { course_code, course_name, credit_hour, lec_hr, lab_hr, category } = req.body;
+    const { course_code, course_name, credit_hour, lec_hr, lab_hr, tut_hr, category } = req.body;
 
     if (!Number.isInteger(id) || id <= 0)
       return res.status(400).json({ error: "Invalid id" });
@@ -59,10 +59,10 @@ const updateCourse = async (req, res) => {
 
     const updateResult = await pool.query(
       `UPDATE Course 
-       SET course_code = $1, course_name = $2, credit_hour = $3, lec_hr = $4, lab_hr = $5, category = $6 
-       WHERE course_id = $7 
+       SET course_code = $1, course_name = $2, credit_hour = $3, lec_hr = $4, lab_hr = $5, tut_hr = $6, category = $7 
+       WHERE course_id = $8 
        RETURNING *`,
-      [course_code, course_name, credit_hour, lec_hr || 0, lab_hr || 0, category, id]
+      [course_code, course_name, credit_hour, lec_hr || 0, lab_hr || 0, tut_hr || 0, category, id]
     );
 
     if (updateResult.rowCount === 0) {
@@ -120,7 +120,7 @@ const getAvailableInstructors = async (req, res) => {
        AND status = 'Active'
        ORDER BY full_name`
     );
-    
+
     res.json(rows);
   } catch (err) {
     console.error("GET /api/instructors error:", err);
@@ -132,7 +132,7 @@ const getAvailableInstructors = async (req, res) => {
 const getCourseInstructors = async (req, res) => {
   try {
     const courseId = Number(req.params.courseId);
-    
+
     if (!Number.isInteger(courseId) || courseId <= 0) {
       return res.status(400).json({ error: "Invalid course ID" });
     }
@@ -243,9 +243,9 @@ const assignInstructorsToCourse = async (req, res) => {
     }
 
     if (assignments.length === 0 && errors.length > 0) {
-      return res.status(400).json({ 
-        error: "Failed to assign instructors", 
-        details: errors 
+      return res.status(400).json({
+        error: "Failed to assign instructors",
+        details: errors
       });
     }
 
@@ -285,9 +285,9 @@ const removeInstructorAssignment = async (req, res) => {
       return res.status(404).json({ error: "Assignment not found" });
     }
 
-    res.json({ 
-      success: true, 
-      message: "Instructor assignment removed successfully" 
+    res.json({
+      success: true,
+      message: "Instructor assignment removed successfully"
     });
   } catch (err) {
     console.error("DELETE /api/courses/:courseId/instructors/:instructorId error:", err);
@@ -354,7 +354,7 @@ const getAllAssignments = async (req, res) => {
        LEFT JOIN Course c ON cia.course_id = c.course_id
        ORDER BY cia.created_at DESC`
     );
-    
+
     res.json(rows);
   } catch (err) {
     console.error("GET /api/course-instructor-assign error:", err);
@@ -362,10 +362,10 @@ const getAllAssignments = async (req, res) => {
   }
 };
 
-module.exports = { 
-  getCourse, 
-  createCourse, 
-  updateCourse, 
+module.exports = {
+  getCourse,
+  createCourse,
+  updateCourse,
   deleteCourse,
   getAvailableInstructors,
   getCourseInstructors,

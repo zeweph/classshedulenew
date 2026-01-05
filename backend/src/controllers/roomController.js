@@ -1,43 +1,33 @@
 const pool = require("../db");
 // CREATE Room (now directly connected to block)
 const createRoom = async (req, res) => {
-  const { 
-    block_id, 
-    room_number, 
-    room_name, 
-    room_type, 
-    capacity, 
-    facilities, 
-    is_available 
+  const {
+    floor_id,
+    room_number,
+    room_name,
+    room_type,
+    capacity,
+    facilities,
+    is_available
   } = req.body;
-
-  if (!block_id || !room_number || !room_type) {
-    return res.status(400).json({ error: "Block ID, room number, and room type are required" });
-  }
 
   try {
     const insertResult = await pool.query(
-      `INSERT INTO rooms (block_id, room_number, room_name, room_type, capacity, facilities, is_available) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7) 
+      `INSERT INTO rooms (floor_id, room_number, room_type, capacity, is_available) 
+       VALUES ($1, $2, $3, $4, $5) 
        RETURNING *`,
-      [block_id, room_number, room_name, room_type, capacity, facilities || [], is_available !== false]
+      [floor_id, room_number, room_type, capacity, is_available !== false]
     );
-   if (err.code === "23505") {
-      return res.status(409).json({ error: "Room already exists in this block" });
-    }
-     if (err.code === "23503") {
-      return res.status(404).json({ error: "Block not found" });
-    }
     res.status(201).json(insertResult.rows[0]);
   } catch (err) {
     console.error("Room creation error:", err);
 
     if (err.code === "23505") {
-      return res.status(409).json({ error: "Room already exists in this block" });
+      return res.status(409).json({ error: "Room already exists on this floor" });
     }
 
     if (err.code === "23503") {
-      return res.status(404).json({ error: "Block not found" });
+      return res.status(404).json({ error: "Floor not found" });
     }
 
     res.status(500).json({ error: "Server error" });
@@ -49,14 +39,17 @@ const getRooms = async (req, res) => {
     const { rows } = await pool.query(
       `SELECT 
         r.*, 
+        f.floor_number,
+        b.block_id,
         b.block_name,
         b.block_code,
         b.description as block_description
        FROM rooms r
-       JOIN blocks b ON r.block_id = b.block_id
-       ORDER BY b.block_name, r.room_number`
+       JOIN floors f ON r.floor_id = f.floor_id
+       JOIN blocks b ON f.block_id = b.block_id
+       ORDER BY b.block_name, f.floor_number, r.room_number`
     );
-    console.log("Rooms fetched:", rows.length); // Debug log
+    console.log("Rooms fetched:", rows.length);
     res.status(200).json(rows);
   } catch (err) {
     console.error("Rooms fetch error:", err);
@@ -69,14 +62,15 @@ const getRoomsForDep = async (req, res) => {
     const { rows } = await pool.query(
       `SELECT 
         r.*, 
+        f.floor_number,
+        b.block_id,
         b.block_name,
-        b.block_code,
-        b.description as block_description
+        b.block_code
        FROM rooms r
-       JOIN blocks b ON r.block_id = b.block_id
-       ORDER BY b.block_name, r.room_number`
+       JOIN floors f ON r.floor_id = f.floor_id
+       JOIN blocks b ON f.block_id = b.block_id
+       ORDER BY b.block_name, f.floor_number, r.room_number`
     );
-    console.log("Rooms fetched:", rows.length); // Debug log
     res.status(200).json(rows);
   } catch (err) {
     console.error("Rooms fetch error:", err);
@@ -91,11 +85,13 @@ const getRoomById = async (req, res) => {
     const { rows } = await pool.query(
       `SELECT 
         r.*, 
+        f.floor_number,
+        b.block_id,
         b.block_name,
-        b.block_code,
-        b.description as block_description
+        b.block_code
        FROM rooms r
-       JOIN blocks b ON r.block_id = b.block_id
+       JOIN floors f ON r.floor_id = f.floor_id
+       JOIN blocks b ON f.block_id = b.block_id
        WHERE r.room_id = $1`,
       [id]
     );
@@ -118,12 +114,15 @@ const getRoomsByBlock = async (req, res) => {
     const { rows } = await pool.query(
       `SELECT 
         r.*, 
+        f.floor_number,
+        b.block_id,
         b.block_name,
         b.block_code
        FROM rooms r
-       JOIN blocks b ON r.block_id = b.block_id
-       WHERE r.block_id = $1
-       ORDER BY r.room_number`,
+       JOIN floors f ON r.floor_id = f.floor_id
+       JOIN blocks b ON f.block_id = b.block_id
+       WHERE b.block_id = $1
+       ORDER BY f.floor_number, r.room_number`,
       [blockId]
     );
 
@@ -137,7 +136,7 @@ const getRoomsByBlock = async (req, res) => {
 const updateRoom = async (req, res) => {
   const { id } = req.params;
   const {
-    block_id,
+    floor_id,
     room_number,
     room_name,
     room_type,
@@ -149,11 +148,11 @@ const updateRoom = async (req, res) => {
   try {
     const updateResult = await pool.query(
       `UPDATE rooms 
-       SET block_id = $1, room_number = $2, room_name = $3, room_type = $4, 
-           capacity = $5, facilities = $6, is_available = $7
-       WHERE room_id = $8 
+       SET floor_id = $1, room_number = $2, room_type = $3, 
+           capacity = $4, is_available = $5
+       WHERE room_id = $6 
        RETURNING *`,
-      [block_id, room_number, room_name, room_type, capacity, facilities, is_available, id]
+      [floor_id, room_number, room_type, capacity, is_available, id]
     );
 
     if (updateResult.rowCount === 0) {
@@ -163,7 +162,7 @@ const updateRoom = async (req, res) => {
     res.json(updateResult.rows[0]);
   } catch (err) {
     console.error("Room update error:", err);
-    
+
     if (err.code === "23505") {
       return res.status(409).json({ error: "Room already exists in this block" });
     }
@@ -194,24 +193,27 @@ const deleteRoom = async (req, res) => {
 // Search rooms with filters
 const searchRooms = async (req, res) => {
   try {
-    const { 
-      block_id, 
-      room_type, 
-      min_capacity, 
+    const {
+      block_id,
+      room_type,
+      min_capacity,
       is_available,
-      search 
+      search
     } = req.query;
 
     let query = `
       SELECT 
         r.*, 
+        f.floor_number,
+        b.block_id,
         b.block_name,
         b.block_code
       FROM rooms r
-      JOIN blocks b ON r.block_id = b.block_id
+      JOIN floors f ON r.floor_id = f.floor_id
+      JOIN blocks b ON f.block_id = b.block_id
       WHERE 1=1
     `;
-    
+
     const params = [];
     let paramCount = 1;
 
@@ -250,7 +252,7 @@ const searchRooms = async (req, res) => {
       paramCount++;
     }
 
-    query += ` ORDER BY b.block_name, r.room_number`;
+    query += ` ORDER BY b.block_name, f.floor_number, r.room_number`;
 
     const { rows } = await pool.query(query, params);
     res.status(200).json(rows);
@@ -262,9 +264,9 @@ const searchRooms = async (req, res) => {
 // Get available rooms (for scheduling)
 const getAvailableRooms = async (req, res) => {
   try {
-    const { 
-      date, 
-      start_time, 
+    const {
+      date,
+      start_time,
       end_time,
       block_id,
       room_type,
@@ -274,14 +276,17 @@ const getAvailableRooms = async (req, res) => {
     let query = `
       SELECT 
         r.*, 
+        f.floor_number,
+        b.block_id,
         b.block_name,
         b.block_code,
-        CONCAT(b.block_code, ' - Room ', r.room_number) as location
+        CONCAT(b.block_code, ' - G', f.floor_number, ' - ', r.room_number) as location
       FROM rooms r
-      JOIN blocks b ON r.block_id = b.block_id
+      JOIN floors f ON r.floor_id = f.floor_id
+      JOIN blocks b ON f.block_id = b.block_id
       WHERE r.is_available = true
     `;
-    
+
     const params = [];
     let paramCount = 1;
 
@@ -298,7 +303,7 @@ const getAvailableRooms = async (req, res) => {
     }
 
     if (block_id) {
-      query += ` AND r.block_id = $${paramCount}`;
+      query += ` AND b.block_id = $${paramCount}`;
       params.push(block_id);
       paramCount++;
     }
@@ -315,7 +320,7 @@ const getAvailableRooms = async (req, res) => {
       paramCount++;
     }
 
-    query += ` ORDER BY b.block_name, r.room_number`;
+    query += ` ORDER BY b.block_name, f.floor_number, r.room_number`;
 
     const { rows } = await pool.query(query, params);
     res.status(200).json(rows);

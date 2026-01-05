@@ -443,30 +443,37 @@ export const saveSchedule = createAsyncThunk(
   }
 );
 export const AutoGenerateSchedule = createAsyncThunk(
-  'schedule/saveSchedule',
-  async ({ scheduleData }: { scheduleData: any; }, { rejectWithValue }) => {
+  'schedule/autoGenerate',
+  async (
+    { scheduleData }: { scheduleData: any },
+    { rejectWithValue }
+  ) => {
     try {
-      const response = await fetch(`${API_URL}/api/schedules/autogenerate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          scheduleData,
-        }),
-      });
+      const response = await fetch(
+        `${API_URL}/api/schedules/autogenerate`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ scheduleData }),
+        }
+      );
+
+      const data = await response.json();
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to save schedule');
+        // 🔥 forward backend error to frontend
+        return rejectWithValue(data.error || 'Auto-generation failed');
       }
-  
-      return await response.json();
-    } catch (error: any) {
-      return rejectWithValue(error.message || 'Failed to save schedule');
-    } 
+
+      return data;
+    } catch (err: any) {
+      return rejectWithValue(err.message || 'Network error');
+    }
   }
 );
+
 
 export const updateSchedule = createAsyncThunk(
   'schedule/updateSchedule',

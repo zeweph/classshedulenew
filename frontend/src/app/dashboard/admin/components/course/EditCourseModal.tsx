@@ -25,6 +25,7 @@ interface EditCourseModalProps {
     credit_hour: number;
     lec_hr: number;
     lab_hr: number;
+    tut_hr: number;
     category: string;
   };
   setEditForm: (form: any) => void;
@@ -91,7 +92,7 @@ const EditCourseModal: React.FC<EditCourseModalProps> = ({
                 }}
               />
             </Grid.Col>
-            <Grid.Col span={4}>
+            <Grid.Col span={3}>
               <NumberInput
                 label="Credit Hours"
                 value={editForm.credit_hour}
@@ -106,7 +107,7 @@ const EditCourseModal: React.FC<EditCourseModalProps> = ({
                 }}
               />
             </Grid.Col>
-            <Grid.Col span={4}>
+            <Grid.Col span={3}>
               <NumberInput
                 label="Lecture Hours"
                 value={editForm.lec_hr}
@@ -120,7 +121,7 @@ const EditCourseModal: React.FC<EditCourseModalProps> = ({
                 }}
               />
             </Grid.Col>
-            <Grid.Col span={4}>
+            <Grid.Col span={3}>
               <NumberInput
                 label="Lab Hours"
                 value={editForm.lab_hr}
@@ -131,6 +132,20 @@ const EditCourseModal: React.FC<EditCourseModalProps> = ({
                 classNames={{
                   input: "border-2 border-purple-200 rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200/50 text-center transition-all duration-200",
                   label: "font-semibold text-purple-700"
+                }}
+              />
+            </Grid.Col>
+            <Grid.Col span={3}>
+              <NumberInput
+                label="Tutorial Hours"
+                value={editForm.tut_hr}
+                onChange={(value) => setEditForm((prev: any) => ({ ...prev, tut_hr: Number(value) }))}
+                min={0}
+                max={20}
+                size="md"
+                classNames={{
+                  input: "border-2 border-orange-200 rounded-xl focus:border-orange-500 focus:ring-2 focus:ring-orange-200/50 text-center transition-all duration-200",
+                  label: "font-semibold text-orange-700"
                 }}
               />
             </Grid.Col>

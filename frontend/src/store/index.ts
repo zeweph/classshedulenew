@@ -19,7 +19,9 @@ import facultyReducer from './slices/facultySlice';
 import studentReducer from './slices/studentSlice';
 import chatReducer from './slices/chatSlice';
 import courseBatchReducer from './slices/courseBatchSlice'; 
-import timeSlotsreducer from './slices/timeSlotSlice'
+import timeSlotsreducer from './slices/timeSlotSlice';
+import sectionRoomsReducer from './slices/sectionRoomSlice';
+import courseSectionsreducer from './slices/courseSectionSlice';
 
 export const store = configureStore({
   reducer: {
@@ -43,6 +45,8 @@ export const store = configureStore({
     chat: chatReducer,
     courseBatches: courseBatchReducer,
     timeSlots: timeSlotsreducer,
+    sectionRooms: sectionRoomsReducer,
+    courseSections:courseSectionsreducer
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

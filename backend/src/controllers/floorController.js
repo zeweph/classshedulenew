@@ -2,20 +2,31 @@ const pool = require("../db");
 
 // CREATE Floor
 const createFloor = async (req, res) => {
-  const { block_id, floor_number, floor_name, description } = req.body;
+  const { block_id, floor_number, room_capacity } = req.body;
 
-  if (!block_id || !floor_number) {
+  if (!block_id || floor_number === undefined || floor_number === null) {
     return res.status(400).json({ error: "Block ID and floor number are required" });
   }
 
   try {
     const insertResult = await pool.query(
-      `INSERT INTO floors (block_id, floor_number, floor_name, description) 
-       VALUES ($1, $2, $3, $4) 
+      `INSERT INTO floors (block_id, floor_number, room_capacity) 
+       VALUES ($1, $2, $3) 
        RETURNING *`,
-      [block_id, floor_number, floor_name, description]
+      [block_id, floor_number, room_capacity]
     );
-
+    if (room_capacity) {
+      for (let room = 1; room <= room_capacity; room++){
+        let room_number = "R"+room;
+        await pool.query(
+      `INSERT INTO rooms (floor_id, room_number) 
+       VALUES ($1, $2) 
+       RETURNING *`,
+      [insertResult.rows[0].floor_id, room_number]
+    );
+      }
+    }
+     
     res.status(201).json(insertResult.rows[0]);
   } catch (err) {
     console.error("Floor creation error:", err);
@@ -72,15 +83,15 @@ const getFloorsByBlock = async (req, res) => {
 // UPDATE Floor
 const updateFloor = async (req, res) => {
   const { id } = req.params;
-  const { block_id, floor_number, floor_name, description } = req.body;
+  const { block_id, floor_number, room_capacity } = req.body;
 
   try {
     const updateResult = await pool.query(
       `UPDATE floors 
-       SET block_id = $1, floor_number = $2, floor_name = $3, description = $4 
-       WHERE floor_id = $5 
+       SET block_id = $1, floor_number = $2, room_capacity = $3 
+       WHERE floor_id = $4 
        RETURNING *`,
-      [block_id, floor_number, floor_name, description, id]
+      [block_id, floor_number, room_capacity, id]
     );
 
     if (updateResult.rowCount === 0) {
@@ -90,7 +101,7 @@ const updateFloor = async (req, res) => {
     res.json(updateResult.rows[0]);
   } catch (err) {
     console.error("Floor update error:", err);
-    
+
     if (err.code === "23505") {
       return res.status(409).json({ error: "Floor already exists in this block" });
     }

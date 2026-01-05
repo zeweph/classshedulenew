@@ -26,6 +26,7 @@ import {
   BookOpenIcon,
   LightBulbIcon,
   ChevronLeftIcon,
+  BuildingStorefrontIcon,
   Bars3Icon,
 } from "@heroicons/react/24/outline";
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -64,8 +65,9 @@ export const DepSidebar = ({
       '/dashboard/department/viewStudent': 'managestudent',
       '/dashboard/department/manageschedule/view/instructorschedule': 'View-instructor-Schedule',
       '/dashboard/department/viewCourse': 'viewcourse',
-      '/dashboard/department/course_batch': 'mangebatchcourse',
-       '/dashboard/department/time_Slot':'timeslot',
+      '/dashboard/department/course_batch': 'mangebatchcourse', 
+       '/dashboard/department/section-room-management': 'mangeroom',
+      '/dashboard/department/time_Slot':'timeslot',
       '/dashboard/chat': 'chat',
       '/dashboard/department/announcement/viewannounce': 'Viewall',
       '/dashboard/department/announcement': 'manageannounce',
@@ -139,6 +141,7 @@ export const DepSidebar = ({
       { key: "manageinst", Icon: UsersIcon, label: "Manage Instructors" },
       { key: "managestudent", Icon: UsersIcon, label: "Manage Students" },
       { key: "mangebatchcourse", Icon: BookOpenIcon, label: "Manage Batch Course" },
+      { key: "mangeroom", Icon: BuildingStorefrontIcon, label: "section-room-management" },
       { key: "timeslot", Icon: ClockIcon, label: "Time Slot" },
       { key: "chat", Icon: ChatBubbleLeftRightIcon, label: "Chat" },
     ]
@@ -165,6 +168,7 @@ export const DepSidebar = ({
       "View-instructor-Schedule": "/dashboard/department/manageschedule/view/instructorschedule",
       "viewcourse": "/dashboard/department/viewCourse",
       'mangebatchcourse': '/dashboard/department/course_batch',
+       'mangeroom':'/dashboard/department/section-room-management',
       'timeslot':'/dashboard/department/time_Slot',
       "chat": "/dashboard/chat",
       "Viewall": "/dashboard/department/announcement/viewannounce",

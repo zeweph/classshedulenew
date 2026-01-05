@@ -33,7 +33,5 @@ router.get("/department/:department_id", getTimeSlotsByDepartment);
 // Get time slots by day
 router.get("/day/:day_of_week", getTimeSlotsByDay);
 
-// Bulk create time slots
-router.post("/bulk", createBulkTimeSlots);
 
 module.exports = router;

@@ -26,7 +26,7 @@ const getAllCourseBatches = async (req, res) => {
       LEFT JOIN Course c ON cb.course_id = c.course_id
       LEFT JOIN departments d ON cb.department_id = d.department_id
       LEFT JOIN batches b ON cb.batch = b.batch_id
-      LEFT JOIN semesters s ON cb.semester_id = s.id::varchar
+      LEFT JOIN semesters s ON cb.semester_id = s.id
       ORDER BY cb.created_at DESC
     `;
 
@@ -66,7 +66,7 @@ const getCourseBatchById = async (req, res) => {
       LEFT JOIN Course c ON cb.course_id = c.course_id
       LEFT JOIN departments d ON cb.department_id = d.department_id
       LEFT JOIN batches b ON cb.batch = b.batch_id
-      LEFT JOIN semesters s ON cb.semester_id = s.id::varchar
+      LEFT JOIN semesters s ON cb.semester_id = s.id
       WHERE cb.id = $1
     `;
 
@@ -175,7 +175,7 @@ const createCourseBatch = async (req, res) => {
       LEFT JOIN Course c ON cb.course_id = c.course_id
       LEFT JOIN departments d ON cb.department_id = d.department_id
       LEFT JOIN batches b ON cb.batch = b.batch_id
-      LEFT JOIN semesters s ON cb.semester_id = s.id::varchar
+      LEFT JOIN semesters s ON cb.semester_id = s.id
       WHERE cb.id = $1
     `;
 
@@ -311,10 +311,7 @@ const createMultipleCourseBatches = async (req, res) => {
   }
 };
 
-/**
- * @desc    Update a course-batch assignment
- * @route   PUT /api/course-batches/:id
- */
+
 const updateCourseBatch = async (req, res) => {
   try {
     const { id } = req.params;
@@ -394,7 +391,7 @@ const updateCourseBatch = async (req, res) => {
       LEFT JOIN Course c ON cb.course_id = c.course_id
       LEFT JOIN departments d ON cb.department_id = d.department_id
       LEFT JOIN batches b ON cb.batch = b.batch_id
-      LEFT JOIN semesters s ON cb.semester_id = s.id::varchar
+      LEFT JOIN semesters s ON cb.semester_id = s.id
       WHERE cb.id = $1
     `;
 
@@ -427,10 +424,7 @@ const updateCourseBatch = async (req, res) => {
   }
 };
 
-/**
- * @desc    Delete a course-batch assignment
- * @route   DELETE /api/course-batches/:id
- */
+
 const deleteCourseBatch = async (req, res) => {
   try {
     const { id } = req.params;
@@ -484,7 +478,7 @@ const getCourseBatchesByFilter = async (req, res) => {
       LEFT JOIN Course c ON cb.course_id = c.course_id
       LEFT JOIN departments d ON cb.department_id = d.department_id
       LEFT JOIN batches b ON cb.batch = b.batch_id
-      LEFT JOIN semesters s ON cb.semester_id = s.id::varchar
+      LEFT JOIN semesters s ON cb.semester_id = s.id
       WHERE 1=1
     `;
     

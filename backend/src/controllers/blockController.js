@@ -2,20 +2,30 @@ const pool = require("../db");
 
 // CREATE Block
 const createBlock = async (req, res) => {
-  const { block_name, block_code, description } = req.body;
+  const { block_name, block_code, floor_capacity, description } = req.body;
 
-  if (!block_name || !block_code) {
+  if (!block_name || !block_code ) {
     return res.status(400).json({ error: "Block name and code are required" });
   }
-
+  console.log("request body", req.body);
   try {
     const insertResult = await pool.query(
-      `INSERT INTO blocks (block_name, block_code, description) 
-       VALUES ($1, $2, $3) 
+      `INSERT INTO blocks (block_name, block_code, floor_capacity, description) 
+       VALUES ($1, $2, $3, $4) 
        RETURNING *`,
-      [block_name, block_code, description]
+      [block_name, block_code, floor_capacity, description]
     );
-
+    if (floor_capacity !== null) {
+      for (let floor = 0; floor < floor_capacity; floor++){
+        let floor_number ="G"+floor;
+      await pool.query(
+      `INSERT INTO floors (block_id, floor_number) 
+       VALUES ($1, $2) 
+       RETURNING *`,
+      [insertResult.rows[0].block_id, floor_number]
+    );
+      }
+   }
     res.status(201).json(insertResult.rows[0]);
   } catch (err) {
     console.error("Block creation error:", err);
@@ -65,15 +75,15 @@ const getBlockById = async (req, res) => {
 // UPDATE Block
 const updateBlock = async (req, res) => {
   const { id } = req.params;
-  const { block_name, block_code, description } = req.body;
+  const { block_name, block_code, floor_capacity, description } = req.body;
 
   try {
     const updateResult = await pool.query(
       `UPDATE blocks 
-       SET block_name = $1, block_code = $2, description = $3 
-       WHERE block_id = $4 
+       SET block_name = $1, block_code = $2, floor_capacity = $3, description = $4 
+       WHERE block_id = $5 
        RETURNING *`,
-      [block_name, block_code, description, id]
+      [block_name, block_code, floor_capacity, description, id]
     );
 
     if (updateResult.rowCount === 0) {
@@ -83,7 +93,7 @@ const updateBlock = async (req, res) => {
     res.json(updateResult.rows[0]);
   } catch (err) {
     console.error("Block update error:", err);
-    
+
     if (err.code === "23505") {
       return res.status(409).json({ error: "Block already exists" });
     }

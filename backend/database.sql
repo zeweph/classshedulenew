@@ -37,8 +37,7 @@ CREATE TABLE blocks_faculity (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (faculity_id) REFERENCES faculity(faculity_id),
     FOREIGN KEY (block_id) REFERENCES blocks(block_id),
-    UNIQUE(faculity_id, block_id),
-    CHECK (faculity_id != block_id)
+    UNIQUE( block_id)
 );
 -------------------------------------------------------------
 -- 2. DEPARTMENTS TABLE
@@ -81,6 +80,21 @@ CREATE TABLE departments_rooms (
     FOREIGN KEY (room_id) REFERENCES rooms(room_id),
     UNIQUE(room_id)
 );
+  
+  CREATE TABLE section_rooms (
+    id SERIAL PRIMARY KEY,
+    department_id INT NOT NULL,
+    batch_id INT NOT NULL,
+    section VARCHAR(3) NOT NULL,
+    room_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (department_id) REFERENCES departments(department_id),
+    FOREIGN KEY (room_id) REFERENCES rooms(room_id)
+);
+
+
+
 -------------------------------------------------------------
 -- 3. USERS TABLE
 -------------------------------------------------------------
@@ -146,6 +160,7 @@ CREATE TABLE Course (
     credit_hour INT NOT NULL,
     lec_hr INT NOT NULL,
     lab_hr INT NOT NULL,
+    tut_hr INT NOT NULL DEFAULT 0,
     category VARCHAR(50) NOT NULL
 );
 
@@ -164,39 +179,46 @@ INSERT INTO Course (course_code, course_name, credit_hour, lec_hr, lab_hr, categ
 -------------------------------------------------------------
 -- 5. COURSE TABLE
 -------------------------------------------------------------
-CREATE TABLE Course_instructor_assign (
-    id SERIAL PRIMARY KEY
-    course_id int NOT NULL ,
-    instructor_id int NOT NULL,
+CREATE TABLE course_instructor_assign (
+    id SERIAL PRIMARY KEY,
+    course_id INT NOT NULL,
+    instructor_id INT NOT NULL,
     course_status VARCHAR(20) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (course_id) REFERENCES Course(course_id),
-    FOREIGN KEY (instructor_id) REFERENCES users(id)
+    FOREIGN KEY (course_id) REFERENCES course(course_id),
+    FOREIGN KEY (instructor_id) REFERENCES users(id),
+    UNIQUE(course_id, instructor_id)
 );
-CREATE TABLE Course_Batch (
+
+CREATE TABLE course_batch (
     id SERIAL PRIMARY KEY,
     course_id INT NOT NULL,
     batch INT NOT NULL,
-    semester_id VARCHAR(20) NOT NULL,
+    semester_id int NOT NULL,
     department_id INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (course_id) REFERENCES Course(course_id),
+    FOREIGN KEY (course_id) REFERENCES course(course_id),
     FOREIGN KEY (department_id) REFERENCES departments(department_id)
 );
+
+-- Create the table if it doesn't exist
+CREATE TABLE IF NOT EXISTS course_section_instructor_assign (
+    id SERIAL PRIMARY KEY,
+    course_batch_id INT NOT NULL,
+    instructor_id INT NOT NULL,
+    section VARCHAR(2) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (course_batch_id) REFERENCES course_batch(id) ON DELETE CASCADE,
+    FOREIGN KEY (instructor_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(course_batch_id, instructor_id,  section)
+);
+
 -------------------------------------------------------------
 -- 6. BLOCKS TABLE
 -------------------------------------------------------------
-
-CREATE TABLE blocks (
-    block_id SERIAL PRIMARY KEY,
-    block_name VARCHAR(50) NOT NULL UNIQUE,
-    block_code VARCHAR(10) NOT NULL UNIQUE,
-    description TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
 
 
 -- Insert Blocks
@@ -215,18 +237,61 @@ INSERT INTO blocks (block_id,block_name, block_code, description) VALUES
 -------------------------------------------------------------
 -- 7. ROOMS TABLE
 -------------------------------------------------------------
-CREATE TABLE rooms (
-    room_id SERIAL PRIMARY KEY,
-    block_id INT NOT NULL REFERENCES blocks(block_id) ON DELETE CASCADE,
-    room_number VARCHAR(20) NOT NULL UNIQUE,
-    room_name VARCHAR(100),
-    room_type VARCHAR(50) NOT NULL,
-    capacity INTEGER,
-    facilities TEXT[],
-    is_available BOOLEAN DEFAULT TRUE,
+
+-- CREATE TABLE rooms (
+--     room_id SERIAL PRIMARY KEY,
+--     block_id INT NOT NULL REFERENCES blocks(block_id) ON DELETE CASCADE,
+--     room_number VARCHAR(20) NOT NULL UNIQUE,
+--     room_name VARCHAR(100),
+--     room_type VARCHAR(50) NOT NULL,
+--     capacity INTEGER,
+--     facilities TEXT[],
+--     is_available BOOLEAN DEFAULT TRUE,
+--     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- );
+
+
+CREATE TABLE blocks (
+    block_id SERIAL PRIMARY KEY,
+    block_name VARCHAR(50) NOT NULL UNIQUE,
+    block_code VARCHAR(10) NOT NULL UNIQUE,
+    floor_capacity INT CHECK (floor_capacity > 0) DEFAULT 5,
+    description TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE floors (
+    floor_id SERIAL PRIMARY KEY,
+    block_id INT NOT NULL,
+    floor_number VARCHAR(50) NOT NULL,
+    room_capacity INT CHECK (room_capacity > 0) DEFAULT 5,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_floor_block
+      FOREIGN KEY (block_id)
+      REFERENCES blocks(block_id)
+      ON DELETE CASCADE,
+
+    UNIQUE (block_id, floor_number)
+);
+CREATE TABLE rooms (
+    room_id SERIAL PRIMARY KEY,
+    floor_id INT NOT NULL,
+    room_number VARCHAR(50) NOT NULL,
+    room_type VARCHAR(50) CHECK (room_type IN ('classroom','lab','office')) DEFAULT 'classroom',
+    capacity INT CHECK (capacity > 0) DEFAULT 30,
+    is_available BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_room_floor
+      FOREIGN KEY (floor_id)
+      REFERENCES floors(floor_id)
+      ON DELETE CASCADE,
+    UNIQUE (floor_id, room_number)
+);
+
 
 -- Insert Rooms
 INSERT INTO rooms (block_id,room_number, room_name, room_type, capacity, facilities) VALUES
@@ -337,12 +402,11 @@ CREATE TABLE time_slots (
     department_id INT NOT NULL REFERENCES departments(department_id),
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
-    slot_type VARCHAR(20) CHECK (slot_type IN ('lecture','lab','break')) NOT NULL,
-    gap_minute INTERVAL DEFAULT '0 minutes',
-    is_active BOOLEAN DEFAULT TRUE,
+    Lecture_duration int NOT NULL,
+    labratory_duration int NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (department_id, start_time, end_time),
+    UNIQUE (department_id),
     CHECK (end_time > start_time)
 );
 

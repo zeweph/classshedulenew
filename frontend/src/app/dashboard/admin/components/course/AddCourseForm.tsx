@@ -43,6 +43,7 @@ const AddCourseForm: React.FC<AddCourseFormProps> = ({
       credit_hour: 1,
       lec_hr: 0,
       lab_hr: 0,
+      tut_hr: 0,
       category: ""
     },
     validate: {
@@ -51,6 +52,7 @@ const AddCourseForm: React.FC<AddCourseFormProps> = ({
       credit_hour: (value) => (value < 1 ? "Credit hours must be at least 1" : null),
       lec_hr: (value) => (value < 0 ? "Lecture hours cannot be negative" : null),
       lab_hr: (value) => (value < 0 ? "Lab hours cannot be negative" : null),
+      tut_hr: (value) => (value < 0 ? "Tutorial hours cannot be negative" : null),
       category: (value) => (value.length === 0 ? "Please select category" : null),
     },
   });
@@ -64,6 +66,7 @@ const AddCourseForm: React.FC<AddCourseFormProps> = ({
         credit_hour: values.credit_hour,
         lec_hr: values.lec_hr,
         lab_hr: values.lab_hr,
+        tut_hr: values.tut_hr,
         category: values.category,
       })).unwrap();
 
@@ -136,7 +139,7 @@ const AddCourseForm: React.FC<AddCourseFormProps> = ({
                   }}
                 />
               </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 4 }}>
+              <Grid.Col span={{ base: 12, md: 3 }}>
                 <NumberInput
                   label="Credit Hours"
                   placeholder="Enter credit hours"
@@ -151,7 +154,7 @@ const AddCourseForm: React.FC<AddCourseFormProps> = ({
                   }}
                 />
               </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 4 }}>
+              <Grid.Col span={{ base: 12, md: 3 }}>
                 <NumberInput
                   label="Lecture Hours"
                   placeholder="Enter lecture hours"
@@ -165,7 +168,7 @@ const AddCourseForm: React.FC<AddCourseFormProps> = ({
                   }}
                 />
               </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 4 }}>
+              <Grid.Col span={{ base: 12, md: 3 }}>
                 <NumberInput
                   label="Lab Hours"
                   placeholder="Enter lab hours"
@@ -176,6 +179,20 @@ const AddCourseForm: React.FC<AddCourseFormProps> = ({
                   classNames={{
                     input: "border-2 border-purple-200 rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200/50 text-center transition-all duration-200",
                     label: "font-semibold text-purple-700"
+                  }}
+                />
+              </Grid.Col>
+              <Grid.Col span={{ base: 12, md: 3 }}>
+                <NumberInput
+                  label="Tutorial Hours"
+                  placeholder="Enter tutorial hours"
+                  description="Weekly tutorial hours"
+                  min={0}
+                  max={20}
+                  {...form.getInputProps('tut_hr')}
+                  classNames={{
+                    input: "border-2 border-orange-200 rounded-xl focus:border-orange-500 focus:ring-2 focus:ring-orange-200/50 text-center transition-all duration-200",
+                    label: "font-semibold text-orange-700"
                   }}
                 />
               </Grid.Col>
