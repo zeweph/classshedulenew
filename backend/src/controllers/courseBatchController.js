@@ -7,28 +7,29 @@ const pool = require("../db");
  */
 const getAllCourseBatches = async (req, res) => {
   try {
-    const query = `
-      SELECT 
-        cb.id,
-        cb.course_id,
-        cb.semester_id,
-        cb.department_id,
-        cb.created_at,
-        cb.updated_at,
-        c.course_code,
-        c.course_name,
-        c.credit_hour,
-        d.department_name,
-        b.batch_year as batch,
-        s.semester AS semester_name,
-        s.academic_year
-      FROM Course_Batch cb
-      LEFT JOIN Course c ON cb.course_id = c.course_id
-      LEFT JOIN departments d ON cb.department_id = d.department_id
-      LEFT JOIN batches b ON cb.batch = b.batch_id
-      LEFT JOIN semesters s ON cb.semester_id = s.id
-      ORDER BY cb.created_at DESC
-    `;
+const query = `
+  SELECT 
+    cb.id,
+    cb.course_id,
+    cb.semester_id,
+    cb.department_id,
+    cb.batch,  -- This is batch_id from Course_Batch table
+    cb.created_at,
+    cb.updated_at,
+    c.course_code,
+    c.course_name,
+    c.credit_hour,
+    d.department_name,
+    b.batch_year,  -- Keep this for display
+    s.semester AS semester_name,
+    s.academic_year
+  FROM Course_Batch cb
+  LEFT JOIN Course c ON cb.course_id = c.course_id
+  LEFT JOIN departments d ON cb.department_id = d.department_id
+  LEFT JOIN batches b ON cb.batch = b.batch_id  -- Join on batch_id
+  LEFT JOIN semesters s ON cb.semester_id = s.id
+  ORDER BY cb.created_at DESC
+`;
 
     const { rows } = await pool.query(query);
 
@@ -137,8 +138,8 @@ const createCourseBatch = async (req, res) => {
     // Check for duplicate assignment
     const duplicateCheck = await pool.query(
       `SELECT id FROM Course_Batch 
-       WHERE course_id = $1 AND batch = $2 AND semester_id = $3`,
-      [course_id, batch, semester_id]
+       WHERE course_id = $1 AND batch = $2 AND semester_id = $3 AND department_id=$4`,
+      [course_id, batch, semester_id,department_id]
     );
 
     if (duplicateCheck.rows.length > 0) {

@@ -15,9 +15,14 @@ import {
   XMarkIcon,
   BuildingStorefrontIcon,
   HomeModernIcon,
-  KeyIcon,
   CheckCircleIcon as CheckIcon,
   EyeIcon,
+  BuildingLibraryIcon,
+  MapPinIcon,
+  Squares2X2Icon,
+  BuildingOffice2Icon,
+  ArrowPathIcon,
+  DocumentDuplicateIcon,
 } from "@heroicons/react/24/outline";
 import {
   Button,
@@ -47,10 +52,12 @@ import {
   Pagination,
   MultiSelect,
   Tabs,
+  Divider,
+  NumberInput,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useAppDispatch, useAppSelector } from "@/hooks/redux";
-import { Authentication, Found } from "@/app/auth/auth";
+import { Authentication, Found, UnauthorizedAccess } from "@/app/auth/auth";
 import {
   fetchDepartments,
   addDepartment,
@@ -63,14 +70,19 @@ import {
 import { fetchFaculties } from "@/store/slices/facultySlice";
 import { 
   fetchBlocks, 
-  fetchRooms, 
   assignRoomToDepartment,
   fetchDepartmentRooms,
   fetchFacultyBlocks,
-  removeRoomFromDepartment 
+  removeRoomFromDepartment,
+  assignFloorRoomsToDepartment,
+  fetchFloors,
+  Floor,
+  fetchFloorsByBlock,
+  fetchRoomsByFloorBlock,
+  fetchRoomDepartment,
 } from "@/store/slices/roomsSlice";
 
-// Add these interfaces for room assignment
+// Add these interfaces
 interface DepartmentRoom {
   id: number;
   department_id: number;
@@ -82,6 +94,7 @@ interface DepartmentRoom {
   room_name?: string;
   block_name?: string;
   block_code?: string;
+  floor_number?: string;
 }
 
 interface DepartmentWithDetails extends Department {
@@ -91,7 +104,7 @@ interface DepartmentWithDetails extends Department {
 
 interface Room {
   room_id: number;
-  block_id: number;
+  floor_id: number;
   room_number: string;
   room_name?: string;
   room_type: string;
@@ -99,6 +112,8 @@ interface Room {
   facilities: string[];
   is_available: boolean;
   block_name?: string;
+  block_id?: number;
+  floor_number?: string;
   department_assigned?: boolean;
   faculity_id?: number;
 }
@@ -110,6 +125,7 @@ interface Block {
   description?: string;
   faculity_id?: number;
   faculity_name?: string;
+  floor_count?: number;
 }
 
 // Department Modal Component
@@ -263,51 +279,76 @@ const DepartmentModal: React.FC<DepartmentModalProps> = ({
   );
 };
 
-// Room Assignment Modal Component
-interface RoomAssignmentModalProps {
+// Assign Modal Component
+interface AssignModalProps {
   opened: boolean;
   onClose: () => void;
   department: DepartmentWithDetails | null;
   onAssign: (departmentId: number, roomIds: number[]) => Promise<void>;
+  onAssignFloor: (departmentId: number, floorId: number, minCapacity?: number) => Promise<void>;
   onRemove: (departmentId: number, roomId: number) => Promise<void>;
 }
 
-// Room Assignment Modal Component
-const RoomAssignmentModal: React.FC<RoomAssignmentModalProps> = ({
+const AssignModal: React.FC<AssignModalProps> = ({
   opened,
   onClose,
   department,
   onAssign,
+  onAssignFloor,
   onRemove,
 }) => {
   const dispatch = useAppDispatch();
   const { faculties } = useAppSelector((state) => state.faculty);
-  const { blocks, rooms, loading } = useAppSelector((state) => state.rooms);
+  const { blocks, rooms, floors, loading } = useAppSelector((state) => state.rooms);
+  
+  // State for room assignment
   const [selectedRooms, setSelectedRooms] = useState<string[]>([]);
   const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
+  const [selectedFloor, setSelectedFloor] = useState<string | null>(null);
   const [roomSearch, setRoomSearch] = useState("");
   const [assigning, setAssigning] = useState(false);
   const [availableBlocks, setAvailableBlocks] = useState<Block[]>([]);
   const [availableRooms, setAvailableRooms] = useState<Room[]>([]);
+  const [availableFloors, setAvailableFloors] = useState<Floor[]>([]);
   const [viewLoading, setViewLoading] = useState(false);
   const [assignedRooms, setAssignedRooms] = useState<DepartmentRoom[]>([]);
-  const [facultyBlocks, setFacultyBlocks] = useState<Block[]>([]);
+  const [currentAssignedRooms, setCurrentAssignedRooms] = useState<DepartmentRoom[]>([]);
+
+  // State for full floor assignment
+  const [floorAssignmentMode, setFloorAssignmentMode] = useState<'all' | 'capacity'>('all');
+  const [minCapacity, setMinCapacity] = useState<number | ''>(0);
   
+  const [assignmentMode, setAssignmentMode] = useState<'room' | 'floor'>('room');
+  const [floorRooms, setFloorRooms] = useState<Room[]>([]);
+  const [floorLoading, setFloorLoading] = useState(false);
+
   // Load department's assigned rooms
   useEffect(() => {
-    if (department?.department_id && opened) {
-      loadAssignedRooms();
-    }
+    if (department?.department_id && opened) { loadCurrentAssignedRooms();}
+          loadAssignedRooms();
   }, [department?.department_id, opened]);
-
-  const loadAssignedRooms = async () => {
+  
+  const loadAssignedRooms = async () => {    
+    setViewLoading(true);
+    try {
+      const result = await dispatch(fetchRoomDepartment());
+      if (fetchRoomDepartment.fulfilled.match(result)) {
+        setAssignedRooms(result.payload);
+      }
+    } catch (error) {
+      console.error("Error loading assigned rooms:", error);
+    } finally {
+      setViewLoading(false);
+    }
+  };
+ const loadCurrentAssignedRooms = async () => {
     if (!department?.department_id) return;
     
     setViewLoading(true);
     try {
       const result = await dispatch(fetchDepartmentRooms(department.department_id));
       if (fetchDepartmentRooms.fulfilled.match(result)) {
-        setAssignedRooms(result.payload);
+        setCurrentAssignedRooms(result.payload);
       }
     } catch (error) {
       console.error("Error loading assigned rooms:", error);
@@ -319,32 +360,17 @@ const RoomAssignmentModal: React.FC<RoomAssignmentModalProps> = ({
   // Get faculty blocks when department or faculties change
   useEffect(() => {
     if (department?.faculity_id && opened) {
-      // First, fetch faculty blocks to get the actual assigned blocks
       const fetchFacultyData = async () => {
         try {
-          // Fetch blocks assigned to this faculty
           const result = await dispatch(fetchFacultyBlocks(department.faculity_id));
           if (fetchFacultyBlocks.fulfilled.match(result)) {
             const facultyAssignedBlocks = result.payload;
-            setFacultyBlocks(facultyAssignedBlocks);
-            
-            // Now filter the main blocks list to only include faculty-assigned blocks
-            const filteredBlocks = blocks.filter(block => 
-              facultyAssignedBlocks.some(fb => fb.block_id === block.block_id)
-            );
-            setAvailableBlocks(filteredBlocks);
-            
-            // If filtered blocks exist, fetch rooms for those blocks
-            if (filteredBlocks.length > 0) {
-              const blockIds = filteredBlocks.map(b => b.block_id);
-              dispatch(fetchRooms({ blockId: blockIds[0] }));
-              setSelectedBlock(blockIds[0].toString());
-            }
+            setAvailableBlocks(facultyAssignedBlocks);
           }
         } catch (error) {
           console.error("Error fetching faculty blocks:", error);
-          setFacultyBlocks([]);
           setAvailableBlocks([]);
+          setAvailableFloors([]);
         }
       };
       
@@ -352,61 +378,159 @@ const RoomAssignmentModal: React.FC<RoomAssignmentModalProps> = ({
     }
   }, [department, faculties, blocks, opened, dispatch]);
 
-  // Update available rooms when selected block changes
+  // UPDATED: Fetch floors for the selected block
   useEffect(() => {
     if (selectedBlock && opened) {
       const blockId = parseInt(selectedBlock);
-      const blockRooms = rooms.filter(room => 
-        room.block_id === blockId && 
-        room.is_available === true &&
-        !assignedRooms.some(ar => ar.room_id === room.room_id) // Filter out already assigned rooms
-      );
-      setAvailableRooms(blockRooms)
+      fetchFloorsForBlock(blockId);
+    } else {
+      // Clear floors if no block is selected
+      setAvailableFloors([]);
+      setSelectedFloor(null);
+      setAvailableRooms([]);
+      setFloorRooms([]);
     }
-  }, [selectedBlock, rooms, opened, assignedRooms]);
+  }, [selectedBlock, opened]);
+
+  // Function to fetch floors for a specific block
+  const fetchFloorsForBlock = async (blockId: number) => {
+    try {
+      const result = await dispatch(fetchFloorsByBlock(blockId));
+      if (fetchFloors.fulfilled.match(result)) {
+        setAvailableFloors(result.payload);
+      } else {
+        setAvailableFloors([]);
+      }
+    } catch (error) {
+      console.error("Error fetching floors for block:", error);
+      setAvailableFloors([]);
+    }
+  };
+
+  // UPDATED: Fetch rooms for the selected floor in room mode
+  useEffect(() => {
+    if (selectedBlock && selectedFloor && assignmentMode === 'room') {
+      const blockId = parseInt(selectedBlock);
+      const floorId = parseInt(selectedFloor);
+      fetchRoomsForFloor(blockId, floorId);
+    } else if (assignmentMode === 'room') {
+      setAvailableRooms([]);
+    }
+  }, [selectedBlock, selectedFloor, assignmentMode]);
+
+  // Function to fetch rooms for a specific floor
+  const fetchRoomsForFloor = async (blockId: number, floorId: number) => {
+    try {
+      const result = await dispatch(fetchRoomsByFloorBlock({ blockId, floorId }));
+      if (fetchRoomsByFloorBlock.fulfilled.match(result)) {
+         const filteredRooms = result.payload.filter((room: { is_available: boolean; room_id: number; }) => 
+          room.is_available === true && !assignedRooms.some(ar => ar.room_id === room.room_id)
+        );
+        setAvailableRooms(filteredRooms);
+      } else {
+        setAvailableRooms([]);
+      }
+    } catch (error) {
+      console.error("Error fetching rooms for floor:", error);
+      setAvailableRooms([]);
+    }
+  };
+
+  // UPDATED: Fetch rooms for the selected floor in floor mode
+  useEffect(() => {
+    if (assignmentMode === 'floor' && selectedFloor && selectedBlock) {
+      const floorId = parseInt(selectedFloor);
+      const BlockId = parseInt(selectedBlock);
+      loadFloorRooms(BlockId,floorId);
+    } else {
+      setFloorRooms([]);
+    }
+
+  }, [selectedFloor, assignmentMode, selectedBlock]);
+
+  const loadFloorRooms = async (blockId:number, floorId: number) => {
+    setFloorLoading(true);
+    try {
+      const result = await dispatch(fetchRoomsByFloorBlock({blockId,floorId}));
+      if (fetchRoomsByFloorBlock.fulfilled.match(result)) {
+         const filteredRooms = result.payload.filter((room: { is_available: boolean; room_id: number; }) => 
+          room.is_available === true && !assignedRooms.some(ar => ar.room_id === room.room_id)
+        );
+        setFloorRooms(filteredRooms);
+        console.log("All rooms", assignedRooms);
+         console.log("All current rooms", currentAssignedRooms);
+      } else {
+        setFloorRooms([]);
+      }
+    } catch (error) {
+      console.error("Error loading floor rooms:", error);
+      setFloorRooms([]);
+    } finally {
+      setFloorLoading(false);
+    }
+  };
 
   const handleAssignRooms = async () => {
-  if (!department || selectedRooms.length === 0) return;
-  
-  setAssigning(true);
-  try {
-    const roomIds = selectedRooms.map(id => parseInt(id));
-    const results = await onAssign(department.department_id, roomIds);
+    if (!department || selectedRooms.length === 0) return;
     
-    // Handle partial successes/errors
-    const successfulAssignments = results.filter((r: any) => r.success);
-    const failedAssignments = results.filter((r: any) => !r.success);
-    
-    if (successfulAssignments.length > 0) {
-      await loadAssignedRooms(); // Refresh assigned rooms
-      setSelectedRooms([]); // Clear selection
+    setAssigning(true);
+    try {
+      const roomIds = selectedRooms.map(id => parseInt(id));
+      console.log('room arrays', roomIds);
+      await onAssign(department.department_id, roomIds);
+      
+      await loadAssignedRooms();
+      setSelectedRooms([]);
       
       notifications.show({
         color: "green",
         title: "Success",
-        message: `Successfully assigned ${successfulAssignments.length} room(s) to department`,
+        message: `Successfully assigned ${roomIds.length} room(s) to department`,
       });
+    } catch (error: any) {
+      notifications.show({
+        color: "red",
+        title: "Error",
+        message: error.message || "Failed to assign rooms",
+      });
+    } finally {
+      setAssigning(false);
     }
+  };
+
+  const handleAssignFloor = async () => {
+    if (!department || !selectedFloor) return;
     
-    if (failedAssignments.length > 0) {
-      failedAssignments.forEach((failure: any) => {
-        notifications.show({
-          color: "yellow",
-          title: "Assignment Conflict",
-          message: failure.error || "Room assignment failed",
-        });
+    setAssigning(true);
+    try {
+      const floorId = parseInt(selectedFloor);
+      const minCap = floorAssignmentMode === 'capacity' ? Number(minCapacity) : undefined;
+      
+      await onAssignFloor(department.department_id, floorId, minCap);
+      
+      await loadAssignedRooms();
+      setSelectedFloor(null);
+      setFloorRooms([]);
+      
+      const message = floorAssignmentMode === 'capacity' 
+        ? `Successfully assigned rooms with minimum capacity of ${minCapacity} from selected floor`
+        : `Successfully assigned all available rooms from selected floor`;
+      
+      notifications.show({
+        color: "green",
+        title: "Success",
+        message,
       });
+    } catch (error: any) {
+      notifications.show({
+        color: "red",
+        title: "Error",
+        message: error.message || "Failed to assign floor rooms",
+      });
+    } finally {
+      setAssigning(false);
     }
-  } catch (error: any) {
-    notifications.show({
-      color: "red",
-      title: "Error",
-      message: error.message || "Failed to assign rooms",
-    });
-  } finally {
-    setAssigning(false);
-  }
-};
+  };
 
   const handleRemoveRoom = async (roomId: number) => {
     if (!department) return;
@@ -417,7 +541,7 @@ const RoomAssignmentModal: React.FC<RoomAssignmentModalProps> = ({
     
     try {
       await onRemove(department.department_id, roomId);
-      await loadAssignedRooms(); // Refresh assigned rooms
+      await loadAssignedRooms();
       notifications.show({
         color: "green",
         title: "Success",
@@ -435,8 +559,15 @@ const RoomAssignmentModal: React.FC<RoomAssignmentModalProps> = ({
   const handleClose = () => {
     setSelectedRooms([]);
     setSelectedBlock(null);
+    setSelectedFloor(null);
     setRoomSearch("");
     setAssignedRooms([]);
+    setAssignmentMode('room');
+    setFloorRooms([]);
+    setFloorAssignmentMode('all');
+    setMinCapacity(0);
+    setAvailableFloors([]);
+    setAvailableRooms([]);
     onClose();
   };
 
@@ -450,6 +581,40 @@ const RoomAssignmentModal: React.FC<RoomAssignmentModalProps> = ({
     availableRooms.find(room => room.room_id.toString() === id)
   ).filter(Boolean) as Room[];
 
+  const getRoomTypeColor = (type: string) => {
+    switch (type.toLowerCase()) {
+      case 'classroom': return 'blue';
+      case 'lab': return 'green';
+      case 'office': return 'orange';
+      default: return 'gray';
+    }
+  };
+
+  const getFilteredFloorRooms = () => {
+    if (floorAssignmentMode === 'capacity' && minCapacity !== '') {
+      return floorRooms.filter(room => room.capacity >= minCapacity);
+    }
+    return floorRooms;
+  };
+
+  const getFloorStats = () => {
+    const filteredRooms = getFilteredFloorRooms();
+    const totalRooms = filteredRooms.length;
+    const availableRoomsCount = filteredRooms.filter(r => 
+      r.is_available && !assignedRooms.some(ar => ar.room_id === r.room_id)
+    ).length;
+    const assignedRoomsCount = filteredRooms.filter(r => 
+      assignedRooms.some(ar => ar.room_id === r.room_id)
+    ).length;
+    
+    return {
+      total: totalRooms,
+      available: availableRoomsCount,
+      assigned: assignedRoomsCount,
+      percentage: totalRooms > 0 ? Math.round((assignedRoomsCount / totalRooms) * 100) : 0
+    };
+  };
+
   return (
     <Modal
       opened={opened}
@@ -457,10 +622,10 @@ const RoomAssignmentModal: React.FC<RoomAssignmentModalProps> = ({
       title={
         <Group gap="sm">
           <ThemeIcon size="md" radius="lg" color="blue" variant="light">
-            <HomeModernIcon className="h-5 w-5" />
+            <BuildingLibraryIcon className="h-5 w-5" />
           </ThemeIcon>
           <div>
-            <Text fw={600}>Manage Department Rooms</Text>
+            <Text fw={600} size="lg">Assign Rooms to Department</Text>
             <Text size="sm" c="dimmed">
               {department?.department_name || "Select department"}
             </Text>
@@ -498,145 +663,126 @@ const RoomAssignmentModal: React.FC<RoomAssignmentModalProps> = ({
             </Group>
           </Paper>
 
-          <Tabs defaultValue="assigned" variant="outline">
-            <Tabs.List grow>
-              <Tabs.Tab value="assigned" leftSection={<CheckIcon className="h-4 w-4" />}>
-                Assigned Rooms ({assignedRooms.length})
-              </Tabs.Tab>
-              <Tabs.Tab value="assign" leftSection={<PlusCircleIcon className="h-4 w-4" />}>
-                Assign New Rooms
-              </Tabs.Tab>
-            </Tabs.List>
+          {/* Assignment Mode Selection */}
+          <Paper withBorder p="md" radius="md">
+            <Tabs value={assignmentMode} onChange={(value) => setAssignmentMode(value as any)}>
+              <Tabs.List grow>
+                <Tabs.Tab 
+                  value="room" 
+                  leftSection={<Squares2X2Icon className="h-4 w-4" />}
+                >
+                  Assign by Room
+                </Tabs.Tab>
+                <Tabs.Tab 
+                  value="floor" 
+                  leftSection={<BuildingOffice2Icon className="h-4 w-4" />}
+                >
+                  Assign by Full Floor
+                </Tabs.Tab>
+              </Tabs.List>
 
-            <Tabs.Panel value="assigned" pt="md">
-              {viewLoading ? (
-                <Center py="xl">
-                  <Loader size="md" color="blue" />
-                </Center>
-              ) : assignedRooms.length === 0 ? (
-                <Paper withBorder p="xl" radius="md" className="text-center">
-                  <HomeModernIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                  <Text fw={500} mb="xs">No Rooms Assigned</Text>
-                  <Text size="sm" c="dimmed">
-                    This department doesn&apos;t have any rooms assigned yet.
-                  </Text>
-                </Paper>
-              ) : (
-                <ScrollArea h={400}>
-                  <Stack gap="sm">
-                    {assignedRooms.map((room) => (
-                      <Paper key={room.id} withBorder p="md" radius="md">
-                        <Group justify="space-between">
-                          <Group gap="sm">
-                            <Avatar size="md" radius="md" color="blue" variant="light">
-                              <HomeModernIcon className="h-4 w-4" />
-                            </Avatar>
-                            <div>
-                              <Text fw={600}>{room.room_number}</Text>
-                              <Text size="sm" c="dimmed">
-                                {room.room_name || "Room"} • Block: {room.block_name}
-                              </Text>
-                              <Text size="xs" c="dimmed">
-                                Status: {room.status} • Assigned: {new Date(room.created_at).toLocaleDateString()}
-                              </Text>
-                            </div>
-                          </Group>
-                          <Group gap="xs">
-                            <Badge 
-                              color={room.status === 'active' ? 'green' : 'orange'} 
-                              variant="light"
-                            >
-                              {room.status}
-                            </Badge>
-                            <ActionIcon
-                              color="red"
-                              variant="subtle"
-                              size="sm"
-                              onClick={() => handleRemoveRoom(room.room_id)}
-                            >
-                              <TrashIcon className="h-4 w-4" />
-                            </ActionIcon>
-                          </Group>
-                        </Group>
-                      </Paper>
-                    ))}
-                  </Stack>
-                </ScrollArea>
-              )}
-            </Tabs.Panel>
-
-            <Tabs.Panel value="assign" pt="md">
-              {!department.faculity_id ? (
-                <Alert color="orange" title="Faculty Required" icon={<BuildingOfficeIcon className="h-5 w-5" />}>
-                  This department needs to be assigned to a faculty first to access faculty blocks.
-                </Alert>
-              ) : availableBlocks.length === 0 ? (
-                <Alert color="yellow" title="No Blocks Available" icon={<BuildingStorefrontIcon className="h-5 w-5" />}>
-                  No building blocks are assigned to the faculty of this department. Please assign blocks to the faculty first.
-                </Alert>
-              ) : (
-                <Stack gap="md">
-                  {/* Block Selection */}
-                  <Paper withBorder p="md" radius="md">
-                    <Text fw={600} mb="md">Select Building Block</Text>
+              {/* Assign by Room Tab */}
+              <Tabs.Panel value="room" pt="md">
+                {!department.faculity_id ? (
+                  <Alert color="orange" title="Faculty Required" icon={<BuildingOfficeIcon className="h-5 w-5" />}>
+                    This department needs to be assigned to a faculty first to access faculty blocks.
+                  </Alert>
+                ) : availableBlocks.length === 0 ? (
+                  <Alert color="yellow" title="No Blocks Available" icon={<BuildingStorefrontIcon className="h-5 w-5" />}>
+                    No building blocks are assigned to the faculty of this department. Please assign blocks to the faculty first.
+                  </Alert>
+                ) : (
+                  <Stack gap="md">
+                    {/* Block Selection */}
                     <Select
+                      label="Select Block"
                       data={availableBlocks.map(block => ({
                         value: block.block_id.toString(),
                         label: `${block.block_name} (${block.block_code})`,
-                        description: block.description
+                        description: `Total Floors: ${block.floor_count || 'N/A'}`
                       }))}
                       value={selectedBlock}
-                      onChange={setSelectedBlock}
-                      placeholder="Select a building block"
+                      onChange={(value) => {
+                        setSelectedBlock(value);
+                        setSelectedFloor(null);
+                        setSelectedRooms([]);
+                        setRoomSearch("");
+                        setAvailableFloors([]);
+                        setAvailableRooms([]);
+                      }}
+                      placeholder="Select a block"
                       searchable
                       size="md"
                       radius="md"
+                      required
                     />
-                  </Paper>
 
-                  {selectedBlock && (
-                    <>
-                      <Paper withBorder p="md" radius="md">
-                        <Group justify="space-between" mb="md">
-                          <div>
-                            <Text fw={600}>Available Rooms</Text>
-                            <Text size="sm" c="dimmed">
-                              {filteredRooms.length} room(s) available in selected block
-                            </Text>
-                          </div>
-                          <TextInput
-                            placeholder="Search rooms..."
-                            value={roomSearch}
-                            onChange={(e) => setRoomSearch(e.target.value)}
-                            leftSection={<MagnifyingGlassIcon className="h-4 w-4" />}
-                            size="sm"
-                            radius="md"
-                            style={{ width: 200 }}
-                          />
-                        </Group>
+                    {/* Floor Selection - Only shows after block is selected */}
+                    {selectedBlock && (
+                      <Select
+                        label="Select Floor"
+                        data={availableFloors.map(floor => ({
+                          value: floor.floor_id.toString(),
+                          label: `G${floor.floor_number}`,
+                          description: `${floor.room_count || 0} rooms available`
+                        }))}
+                        value={selectedFloor}
+                        onChange={(value) => {
+                          setSelectedFloor(value);
+                          setSelectedRooms([]);
+                        }}
+                        placeholder={availableFloors.length === 0 ? "Loading floors..." : "Select a floor"}
+                        searchable
+                        size="md"
+                        radius="md"
+                        required
+                        disabled={!selectedBlock || availableFloors.length === 0}
+                      />
+                    )}
 
-                        {loading ? (
-                          <Center py="xl">
-                            <Loader size="md" color="blue" />
-                          </Center>
-                        ) : filteredRooms.length === 0 ? (
-                          <Paper withBorder p="xl" radius="md" className="text-center">
-                            <HomeModernIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                            <Text fw={500} mb="xs">No Rooms Available</Text>
-                            <Text size="sm" c="dimmed">
-                              {roomSearch 
-                                ? "No rooms match your search"
-                                : "No available rooms in this block"
-                              }
-                            </Text>
-                          </Paper>
-                        ) : (
-                          <ScrollArea h={300}>
+                    {/* Room Selection - Only shows after block and floor are selected */}
+                    {selectedBlock && selectedFloor && (
+                      <>
+                        <Paper withBorder p="md" radius="md">
+                          <Group justify="space-between" mb="md">
+                            <div>
+                              <Text fw={600}>Available Rooms</Text>
+                              <Text size="sm" c="dimmed">
+                                Select individual rooms to assign from Floor {availableFloors.find(f => f.floor_id.toString() === selectedFloor)?.floor_number}
+                              </Text>
+                            </div>
+                            <TextInput
+                              placeholder="Search rooms..."
+                              value={roomSearch}
+                              onChange={(e) => setRoomSearch(e.currentTarget.value)}
+                              leftSection={<MagnifyingGlassIcon className="h-4 w-4" />}
+                              size="sm"
+                              radius="md"
+                              style={{ width: 200 }}
+                            />
+                          </Group>
+
+                          {loading ? (
+                            <Center py="xl">
+                              <Loader size="md" color="blue" />
+                            </Center>
+                          ) : filteredRooms.length === 0 ? (
+                            <Paper withBorder p="xl" radius="md" className="text-center">
+                              <HomeModernIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                              <Text fw={500} mb="xs">No Rooms Available</Text>
+                              <Text size="sm" c="dimmed">
+                                {roomSearch 
+                                  ? "No rooms match your search"
+                                  : "No available rooms on this floor"
+                                }
+                              </Text>
+                            </Paper>
+                          ) : (
                             <MultiSelect
                               data={filteredRooms.map(room => ({
                                 value: room.room_id.toString(),
                                 label: `${room.room_number} - ${room.room_name || room.room_type}`,
-                                description: `${room.room_type} • Capacity: ${room.capacity || "N/A"}`
+                                description: `Capacity: ${room.capacity || "N/A"} • Type: ${room.room_type}`
                               }))}
                               value={selectedRooms}
                               onChange={setSelectedRooms}
@@ -644,77 +790,416 @@ const RoomAssignmentModal: React.FC<RoomAssignmentModalProps> = ({
                               searchable
                               clearable
                               hidePickedOptions
-                              maxDropdownHeight={200}
                               size="md"
                               radius="md"
                               nothingFoundMessage="No rooms found"
+                              maxDropdownHeight={200}
                             />
-                          </ScrollArea>
-                        )}
-                      </Paper>
+                          )}
+                        </Paper>
 
-                      {selectedRoomsData.length > 0 && (
-                        <Paper withBorder p="md" radius="md" className="bg-green-50 border-green-100">
-                          <Group justify="space-between" mb="md">
-                            <Text fw={600}>Selected Rooms ({selectedRoomsData.length})</Text>
-                            <Badge color="green" variant="light">Ready to assign</Badge>
-                          </Group>
-                          <ScrollArea h={200}>
-                            <Stack gap="sm">
-                              {selectedRoomsData.map((room) => (
-                                <Paper key={room.room_id} withBorder p="sm" radius="md">
-                                  <Group justify="space-between">
-                                    <Group gap="sm">
-                                      <Avatar size="sm" radius="md" color="green" variant="light">
-                                        <HomeModernIcon className="h-3 w-3" />
-                                      </Avatar>
+                        {/* Selected Rooms Preview */}
+                        {selectedRoomsData.length > 0 && (
+                          <Paper withBorder p="md" radius="md" className="bg-green-50 border-green-100">
+                            <Text fw={600} mb="md">Selected Rooms ({selectedRoomsData.length})</Text>
+                            <ScrollArea h={200}>
+                              <Stack gap="sm">
+                                {selectedRoomsData.map((room) => (
+                                  <Paper key={room.room_id} withBorder p="sm" radius="md">
+                                    <Group justify="space-between">
                                       <div>
                                         <Text fw={500}>{room.room_number}</Text>
-                                        <Text size="xs" c="dimmed">
-                                          {room.room_name || room.room_type} • Block: {room.block_name}
+                                        <Text size="sm" c="dimmed">
+                                          {room.room_name || room.room_type}
                                         </Text>
                                       </div>
+                                      <Badge color={getRoomTypeColor(room.room_type)}>
+                                        Capacity: {room.capacity}
+                                      </Badge>
                                     </Group>
-                                    <Badge size="sm" color="green" variant="light">
-                                      Capacity: {room.capacity || "N/A"}
-                                    </Badge>
-                                  </Group>
-                                </Paper>
-                              ))}
-                            </Stack>
-                          </ScrollArea>
-                        </Paper>
-                      )}
-                    </>
-                  )}
+                                  </Paper>
+                                ))}
+                              </Stack>
+                            </ScrollArea>
+                          </Paper>
+                        )}
+                      </>
+                    )}
+                  </Stack>
+                )}
+              </Tabs.Panel>
 
-                  <Group justify="flex-end" gap="sm">
-                    <Button variant="light" color="gray" onClick={() => setSelectedRooms([])} size="md">
-                      Clear Selection
-                    </Button>
-                    <Button
-                      onClick={handleAssignRooms}
-                      disabled={!department.faculity_id || selectedRooms.length === 0 || assigning}
-                      loading={assigning}
+              {/* Assign by Full Floor Tab */}
+              <Tabs.Panel value="floor" pt="md">
+                {!department.faculity_id ? (
+                  <Alert color="orange" title="Faculty Required" icon={<BuildingOfficeIcon className="h-5 w-5" />}>
+                    This department needs to be assigned to a faculty first to access faculty blocks.
+                  </Alert>
+                ) : availableBlocks.length === 0 ? (
+                  <Alert color="yellow" title="No Blocks Available" icon={<BuildingStorefrontIcon className="h-5 w-5" />}>
+                    No building blocks are assigned to the faculty of this department.
+                  </Alert>
+                ) : (
+                  <Stack gap="md">
+                    {/* Block Selection */}
+                    <Select
+                      label="Select Block"
+                      data={availableBlocks.map(block => ({
+                        value: block.block_id.toString(),
+                        label: `${block.block_name} (${block.block_code})`,
+                        description: `Total Floors: ${block.floor_count || 'N/A'}`
+                      }))}
+                      value={selectedBlock}
+                      onChange={(value) => {
+                        setSelectedBlock(value);
+                        setSelectedFloor(null);
+                        setFloorRooms([]);
+                        setAvailableFloors([]);
+                      }}
+                      placeholder="Select a block"
+                      searchable
                       size="md"
-                      className="bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700"
-                      leftSection={<KeyIcon className="h-5 w-5" />}
-                    >
-                      {assigning ? "Assigning..." : `Assign ${selectedRooms.length} Room(s)`}
-                    </Button>
-                  </Group>
-                </Stack>
-              )}
-            </Tabs.Panel>
-          </Tabs>
+                      radius="md"
+                      required
+                    />
 
-          <Group justify="flex-end" gap="sm">
-            <Button variant="light" color="gray" onClick={handleClose} size="md">
+                    {/* Floor Selection - Only shows after block is selected */}
+                    {selectedBlock && (
+                      <Select
+                        label="Select Floor"
+                        data={availableFloors.map(floor => ({
+                          value: floor.floor_id.toString(),
+                          label: `G${floor.floor_number}`,
+                          description: `${floor.room_count || 0} rooms`
+                        }))}
+                        value={selectedFloor}
+                        onChange={setSelectedFloor}
+                        placeholder={availableFloors.length === 0 ? "Loading floors..." : "Select a floor"}
+                        searchable
+                        size="md"
+                        radius="md"
+                        disabled={!selectedBlock || availableFloors.length === 0}
+                        required
+                      />
+                    )}
+
+                    {selectedFloor && (
+                      <>
+                        {/* Floor Assignment Options */}
+                        <Paper withBorder p="md" radius="md">
+                          <Text fw={600} mb="md">Floor Assignment Options</Text>
+                          <Group>
+                            <Select
+                              label="Assignment Mode"
+                              value={floorAssignmentMode}
+                              onChange={(value) => setFloorAssignmentMode(value as 'all' | 'capacity')}
+                              data={[
+                                { value: 'all', label: 'All Available Rooms' },
+                                { value: 'capacity', label: 'Based on Room Capacity' }
+                              ]}
+                              size="md"
+                              radius="md"
+                              style={{ flex: 1 }}
+                            />
+                            
+                            {floorAssignmentMode === 'capacity' && (
+                              <NumberInput
+                                label="Minimum Capacity"
+                                value={minCapacity}
+                                onChange={setMinCapacity}
+                                placeholder="Min capacity"
+                                min={0}
+                                size="md"
+                                radius="md"
+                                style={{ flex: 1 }}
+                              />
+                            )}
+                          </Group>
+                        </Paper>
+
+                        {/* Floor Rooms Preview */}
+                        {floorLoading ? (
+                          <Center py="xl">
+                            <Loader size="md" color="blue" />
+                          </Center>
+                        ) : floorRooms.length > 0 ? (
+                          <Paper withBorder p="md" radius="md">
+                            <Group justify="space-between" mb="md">
+                              <div>
+                                <Text fw={600}>Floor Rooms Preview</Text>
+                                <Text size="sm" c="dimmed">
+                                  {getFilteredFloorRooms().length} rooms found on this floor
+                                </Text>
+                              </div>
+                              <Badge 
+                                color={getFloorStats().available > 0 ? "green" : "orange"}
+                                variant="light"
+                              >
+                                {getFloorStats().available} available
+                              </Badge>
+                            </Group>
+
+                            {/* Floor Stats */}
+                            <Paper withBorder p="sm" radius="md" mb="md" className="bg-blue-50">
+                              <Grid gutter="md">
+                                <Grid.Col span={4}>
+                                  <div className="text-center">
+                                    <Text size="sm" fw={500}>Total Rooms</Text>
+                                    <Text size="xl" fw={700} c="blue">
+                                      {getFloorStats().total}
+                                    </Text>
+                                  </div>
+                                </Grid.Col>
+                                <Grid.Col span={4}>
+                                  <div className="text-center">
+                                    <Text size="sm" fw={500}>Available</Text>
+                                    <Text size="xl" fw={700} c="green">
+                                      {getFloorStats().available}
+                                    </Text>
+                                  </div>
+                                </Grid.Col>
+                                <Grid.Col span={4}>
+                                  <div className="text-center">
+                                    <Text size="sm" fw={500}>Already Assigned</Text>
+                                    <Text size="xl" fw={700} c="orange">
+                                      {getFloorStats().assigned}
+                                    </Text>
+                                  </div>
+                                </Grid.Col>
+                              </Grid>
+                            </Paper>
+
+                            {/* Assignment Summary */}
+                            {getFloorStats().available > 0 && (
+                              <Alert color="blue" title="Assignment Summary" radius="md">
+                                <Text size="sm">
+                                  This will assign <strong>{getFloorStats().available} room(s)</strong> from Floor {availableFloors.find(f => f.floor_id.toString() === selectedFloor)?.floor_number}
+                                  {floorAssignmentMode === 'capacity' && minCapacity !== '' && 
+                                    ` with minimum capacity of ${minCapacity}`
+                                  }.
+                                </Text>
+                                <Text size="xs" c="dimmed" mt="xs">
+                                  Note: Already assigned or unavailable rooms will be skipped.
+                                </Text>
+                              </Alert>
+                            )}
+                          </Paper>
+                        ) : (
+                          <Alert color="yellow" title="No Rooms Found" radius="md">
+                            <Text size="sm">No rooms found on this floor.</Text>
+                          </Alert>
+                        )}
+                      </>
+                    )}
+                  </Stack>
+                )}
+              </Tabs.Panel>
+            </Tabs>
+
+            {/* Assignment Button */}
+            {(selectedRooms.length > 0 || (assignmentMode === 'floor' && selectedFloor)) && (
+              <Paper withBorder p="md" radius="md" className="bg-gradient-to-r from-green-50 to-teal-50 mt='md'">
+                <Group justify="space-between">
+                  <div>
+                    <Text fw={600} size="sm">
+                      {assignmentMode === 'room' 
+                        ? `Assign ${selectedRooms.length} Room(s)`
+                        : `Assign Floor ${availableFloors.find(f => f.floor_id.toString() === selectedFloor)?.floor_number} Rooms`
+                      }
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {assignmentMode === 'room'
+                        ? 'Selected rooms will be assigned to the department'
+                        : `${getFloorStats().available} available rooms will be assigned based on selected criteria`
+                      }
+                    </Text>
+                  </div>
+                  <Button
+                    onClick={assignmentMode === 'room' ? handleAssignRooms : handleAssignFloor}
+                    loading={assigning}
+                    disabled={assigning}
+                    size="md"
+                    className="bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700"
+                    leftSection={<DocumentDuplicateIcon className="h-5 w-5" />}
+                  >
+                    {assigning ? 'Assigning...' : 'Assign Now'}
+                  </Button>
+                </Group>
+              </Paper>
+            )}
+          </Paper>
+
+          {/* Currently Assigned Rooms */}
+          <Paper withBorder p="md" radius="md">
+            <Group justify="space-between" mb="md">
+              <Group gap="xs">
+                <CheckIcon className="h-5 w-5 text-green-600" />
+                <Text fw={600}>Currently Assigned Rooms ({currentAssignedRooms.length})</Text>
+              </Group>
+              <Button
+                variant="light"
+                color="blue"
+                size="xs"
+                leftSection={<ArrowPathIcon className="h-4 w-4" />}
+                onClick={loadAssignedRooms}
+                loading={viewLoading}
+              >
+                Refresh
+              </Button>
+            </Group>
+
+            {viewLoading ? (
+              <Center py="xl">
+                <Loader size="md" color="blue" />
+              </Center>
+            ) : currentAssignedRooms.length === 0 ? (
+              <Paper withBorder p="xl" radius="md" className="text-center">
+                <MapPinIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                <Text fw={500} mb="xs">No Rooms Assigned</Text>
+                <Text size="sm" c="dimmed">
+                  Use the tabs above to assign rooms to this department.
+                </Text>
+              </Paper>
+            ) : (
+              <ScrollArea h={200}>
+                <Stack gap="sm">
+                  {currentAssignedRooms.slice(0, 5).map((room) => (
+                    <Paper key={room.id} withBorder p="sm" radius="md">
+                      <Group justify="space-between">
+                        <div>
+                          <Text fw={500}>{room.room_number}</Text>
+                          <Text size="sm" c="dimmed">
+                            {room.block_name} • G{room.floor_number}
+                          </Text>
+                        </div>
+                        <ActionIcon
+                          color="red"
+                          variant="subtle"
+                          onClick={() => handleRemoveRoom(room.room_id)}
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </ActionIcon>
+                      </Group>
+                    </Paper>
+                  ))}
+                  {currentAssignedRooms.length > 5 && (
+                    <Text size="sm" c="dimmed" ta="center">
+                      ...and {currentAssignedRooms.length - 5} more rooms
+                    </Text>
+                  )}
+                </Stack>
+              </ScrollArea>
+            )}
+          </Paper>
+
+          <Group justify="flex-end">
+            <Button variant="light" color="gray" onClick={handleClose}>
               Close
             </Button>
           </Group>
         </Stack>
       )}
+    </Modal>
+  );
+};
+
+// View Modal Component
+interface ViewModalProps {
+  opened: boolean;
+  onClose: () => void;
+  department: DepartmentWithDetails | null;
+}
+
+const ViewModal: React.FC<ViewModalProps> = ({
+  opened,
+  onClose,
+  department,
+}) => {
+  if (!department) return null;
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title={
+        <Group gap="sm">
+          <ThemeIcon size="md" radius="lg" color="blue" variant="light">
+            <EyeIcon className="h-5 w-5" />
+          </ThemeIcon>
+          <div>
+            <Text fw={600}>Department Details</Text>
+            <Text size="sm" c="dimmed">
+              {department.department_name}
+            </Text>
+          </div>
+        </Group>
+      }
+      centered
+      size="md"
+      radius="lg"
+    >
+      <Stack gap="md">
+        <Paper withBorder p="md" radius="md" className="bg-blue-50">
+          <Group gap="md">
+            <Avatar size="lg" radius="md" color="blue">
+              {department.department_name.charAt(0).toUpperCase()}
+            </Avatar>
+            <div>
+              <Text fw={600} size="lg">{department.department_name}</Text>
+              <Text size="sm" c="dimmed">
+                ID: {department.department_id}
+              </Text>
+            </div>
+          </Group>
+        </Paper>
+
+        <Paper withBorder p="md" radius="md">
+          <Stack gap="sm">
+            <Group justify="space-between">
+              <Text fw={500}>Faculty</Text>
+              {department.faculity_name ? (
+                <Badge color="blue" variant="light">
+                  {department.faculity_name}
+                </Badge>
+              ) : (
+                <Badge color="gray" variant="light">
+                  Not Assigned
+                </Badge>
+              )}
+            </Group>
+            
+            <Divider />
+            
+            <Group justify="space-between">
+              <Text fw={500}>Department Head</Text>
+              {department.head_name ? (
+                <Badge color="green" variant="light">
+                  {department.head_name}
+                </Badge>
+              ) : (
+                <Badge color="yellow" variant="light">
+                  Vacant
+                </Badge>
+              )}
+            </Group>
+            
+            <Divider />
+            
+            <Group justify="space-between">
+              <Text fw={500}>Created</Text>
+              <Text size="sm" c="dimmed">
+                {new Date(department.created_at).toLocaleDateString()}
+              </Text>
+            </Group>
+          </Stack>
+        </Paper>
+
+        <Group justify="flex-end">
+          <Button variant="light" color="gray" onClick={onClose}>
+            Close
+          </Button>
+        </Group>
+      </Stack>
     </Modal>
   );
 };
@@ -739,7 +1224,7 @@ const ManageDepartments: React.FC = () => {
     department: null
   });
 
-  const [roomAssignmentModal, setRoomAssignmentModal] = useState<{
+  const [assignModal, setAssignModal] = useState<{
     opened: boolean;
     department: DepartmentWithDetails | null;
   }>({
@@ -830,10 +1315,12 @@ const ManageDepartments: React.FC = () => {
 
   const totalPages = Math.ceil(filteredDepartments.length / itemsPerPage);
 
-  if (user === null) { 
+  if (user === null ) { 
     return <Authentication />;
   }
-
+  if (user?.role !== 'admin') {
+    return <UnauthorizedAccess />
+    }
   // Add department
   const handleAddDepartment = () => {
     setDepartmentModal({
@@ -857,12 +1344,24 @@ const ManageDepartments: React.FC = () => {
       assigned_rooms: [],
       room_count: 0
     };
-    setRoomAssignmentModal({
+    setAssignModal({
       opened: true,
       department: departmentWithDetails
     });
   };
 
+  // View department details
+  const handleViewDepartment = (department: Department) => {
+    const departmentWithDetails: DepartmentWithDetails = {
+      ...department,
+      assigned_rooms: [],
+      room_count: 0
+    };
+    setViewModal({
+      opened: true,
+      department: departmentWithDetails
+    });
+  };
 
   // Save department (add or edit)
   const handleSaveDepartment = async (
@@ -903,71 +1402,65 @@ const ManageDepartments: React.FC = () => {
 
   // Assign rooms to department
   const handleAssignRoomsToDepartment = async (departmentId: number, roomIds: number[]) => {
-  setActionLoading(true);
-  try {
-    // Process rooms sequentially to handle conflicts properly
-    const results = [];
-    
-    for (const roomId of roomIds) {
-      try {
-        const result = await dispatch(assignRoomToDepartment({ 
-          departmentId, 
-          roomId, 
-          status: "active" 
-        })).unwrap();
-        
-        results.push({
-          success: true,
-          roomId,
-          data: result
-        });
-      } catch (error: any) {
-        // Check if it's a conflict error
-        if (error?.status === 409 || error?.error?.includes('already assigned')) {
-          results.push({
-            success: false,
-            roomId,
-            error: error.error || `Room ${roomId} is already assigned to another department`
-          });
-        } else {
-          throw error; // Re-throw unexpected errors
-        }
-      }
-    }
-    
-    // Show summary notification
-    const successful = results.filter(r => r.success).length;
-    const failed = results.filter(r => !r.success).length;
-    
-    if (successful > 0) {
+    setActionLoading(true);
+    try {
+      const result = await dispatch(assignRoomToDepartment({ 
+        departmentId, 
+        roomIds: roomIds,
+        status: "active" 
+      })).unwrap();
+      
       notifications.show({
         color: "green",
-        title: "Assignment Summary",
-        message: `Assigned ${successful} room(s), ${failed} failed due to conflicts`
+        title: "Success",
+        message: `Successfully assigned ${roomIds.length} room(s)`,
       });
       
-      // Fetch rooms for the updated block (only if successful assignments)
-      const department = departments.find(d => d.department_id === departmentId);
-      if (department?.faculity_id) {
-        const facultyBlocks = blocks.filter(block => block.faculity_id === department.faculity_id);
-        if (facultyBlocks.length > 0) {
-          dispatch(fetchRooms({ blockId: facultyBlocks[0].block_id }));
-        }
-      }
+      return result;
+    } catch (err: any) {
+      notifications.show({
+        color: "red",
+        title: "Error",
+        message: err.message || "Failed to assign rooms",
+      });
+      throw err;
+    } finally {
+      setActionLoading(false);
     }
-    
-    return results;
-  } catch (err: any) {
-    notifications.show({
-      color: "red",
-      title: "Error",
-      message: err.message || "Failed to assign rooms",
-    });
-    throw err;
-  } finally {
-    setActionLoading(false);
-  }
-};
+  };
+
+  // Assign floor rooms to department with capacity filter
+  const handleAssignFloorToDepartment = async (
+    departmentId: number, 
+    floorId: number, 
+    minCapacity?: number
+  ) => {
+    setActionLoading(true);
+    try {
+      const result = await dispatch(assignFloorRoomsToDepartment({ 
+        departmentId, 
+        floorId,
+        minCapacity 
+      })).unwrap();
+      
+      notifications.show({
+        color: "green",
+        title: "Success",
+        message: result.message || "Floor rooms assigned successfully",
+      });
+      
+      return result;
+    } catch (err: any) {
+      notifications.show({
+        color: "red",
+        title: "Error",
+        message: err.message || "Failed to assign floor rooms",
+      });
+      throw err;
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   // Remove room from department
   const handleRemoveRoomFromDepartment = async (departmentId: number, roomId: number) => {
@@ -1020,8 +1513,8 @@ const ManageDepartments: React.FC = () => {
     });
   };
 
-  const handleCloseRoomAssignmentModal = () => {
-    setRoomAssignmentModal({
+  const handleCloseAssignModal = () => {
+    setAssignModal({
       opened: false,
       department: null
     });
@@ -1046,13 +1539,13 @@ const ManageDepartments: React.FC = () => {
     <Container size="xl" py="xl" className="min-h-screen">
       <Stack gap="lg">
         {/* Header */}
-        <Box className="relative overflow-hidden rounded-2xl">
+        <Box className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 p-8">
           <Stack gap="xs">
             <Group align="center" gap="sm">
-              <ThemeIcon size="xl" radius="lg" variant="white" color="blue">
-                <AcademicCapIcon className="h-6 w-6" />
+              <ThemeIcon size="xl" radius="lg" color="white" variant="white">
+                <AcademicCapIcon className="h-6 w-6 text-blue-600" />
               </ThemeIcon>
-              <Title order={1} className="text-blue">Department Management</Title>
+              <Title order={1} c="white">Department Management</Title>
             </Group>
             <Text className="text-blue-100 max-w-2xl">
               Create, organize, and manage academic departments across faculties. 
@@ -1118,7 +1611,7 @@ const ManageDepartments: React.FC = () => {
                 <div>
                   <Text size="sm" c="dimmed" fw={500}>With Rooms</Text>
                   <Title order={3} className="text-purple-700">
-                    {departments.filter(d => d.faculity_name).length} {/* Update with actual room count */}
+                    {departments.filter(d => d.faculity_name).length}
                   </Title>
                 </div>
               </Group>
@@ -1410,6 +1903,17 @@ const ManageDepartments: React.FC = () => {
                         
                         <Table.Td>
                           <Group gap="xs">
+                            <Tooltip label="View details">
+                              <ActionIcon
+                                variant="light"
+                                color="blue"
+                                size="lg"
+                                onClick={() => handleViewDepartment(dept)}
+                              >
+                                <EyeIcon className="h-4 w-4" />
+                              </ActionIcon>
+                            </Tooltip>
+                            
                             <Tooltip label="Edit department">
                               <ActionIcon
                                 variant="light"
@@ -1422,7 +1926,7 @@ const ManageDepartments: React.FC = () => {
                               </ActionIcon>
                             </Tooltip>
                             
-                            <Tooltip label="Manage rooms">
+                            <Tooltip label="Assign rooms">
                               <ActionIcon
                                 variant="light"
                                 color="teal"
@@ -1485,72 +1989,22 @@ const ManageDepartments: React.FC = () => {
           onSave={handleSaveDepartment}
         />
 
-        {/* Room Assignment Modal */}
-        <RoomAssignmentModal
-          opened={roomAssignmentModal.opened}
-          onClose={handleCloseRoomAssignmentModal}
-          department={roomAssignmentModal.department}
+        {/* Assign Modal */}
+        <AssignModal
+          opened={assignModal.opened}
+          onClose={handleCloseAssignModal}
+          department={assignModal.department}
           onAssign={handleAssignRoomsToDepartment}
+          onAssignFloor={handleAssignFloorToDepartment}
           onRemove={handleRemoveRoomFromDepartment}
         />
 
-        {/* View Rooms Modal */}
-        <Modal
+        {/* View Modal */}
+        <ViewModal
           opened={viewModal.opened}
           onClose={handleCloseViewModal}
-          title={
-            <Group gap="sm">
-              <ThemeIcon size="md" radius="lg" color="blue" variant="light">
-                <EyeIcon className="h-5 w-5" />
-              </ThemeIcon>
-              <div>
-                <Text fw={600}>Department Rooms</Text>
-                <Text size="sm" c="dimmed">
-                  {viewModal.department?.department_name || "Select department"}
-                </Text>
-              </div>
-            </Group>
-          }
-          centered
-          size="lg"
-          radius="lg"
-        >
-          {viewModal.department && (
-            <Stack gap="md">
-              <Paper withBorder p="md" radius="md" className="bg-blue-50">
-                <Group gap="md">
-                  <Avatar size="lg" radius="md" color="blue">
-                    {viewModal.department.department_name.charAt(0).toUpperCase()}
-                  </Avatar>
-                  <div>
-                    <Text fw={600} size="lg">{viewModal.department.department_name}</Text>
-                    <Text size="sm" c="dimmed">
-                      Faculty: {viewModal.department.faculity_name || "Not assigned"}
-                    </Text>
-                  </div>
-                </Group>
-              </Paper>
-              
-              <Button
-                fullWidth
-                variant="light"
-                color="teal"
-                onClick={() => {
-                  handleCloseViewModal();
-                  handleAssignRooms(viewModal.department!);
-                }}
-                leftSection={<KeyIcon className="h-4 w-4" />}
-                disabled={!viewModal.department.faculity_id}
-              >
-                Manage Department Rooms
-              </Button>
-              
-              <Text size="sm" c="dimmed" ta="center">
-                Click the button above to assign or remove rooms for this department
-              </Text>
-            </Stack>
-          )}
-        </Modal>
+          department={viewModal.department}
+        />
       </Stack>
     </Container>
   );

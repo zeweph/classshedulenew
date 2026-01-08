@@ -1664,32 +1664,49 @@ const CourseBatchManagement: React.FC = () => {
   }, [adminAssignments]);
 
   // Filter course batches
-  const filteredCourseBatches = useMemo(() => {
-    return courseBatches.filter(cb => {
-      const matchesSearch = searchTerm ? 
-        cb.course_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        cb.course_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        cb.department_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        cb.instructor_name?.toLowerCase().includes(searchTerm.toLowerCase())
-        : true;
-      
-      const matchesDepartment = selectedDepartment ? 
-        cb.department_id.toString() === selectedDepartment 
-        : true;
-      
-      const matchesBatch = selectedBatch ? 
-        cb.batch.toString() === selectedBatch 
-        : true;
-      
-      const matchesSemester = selectedSemester ? 
-        cb.semester_id === selectedSemester 
-        : true;
-      
-      return matchesSearch && matchesDepartment && matchesBatch && matchesSemester;
+// In filteredCourseBatches:
+const filteredCourseBatche= useMemo(() => {
+  const filtered = courseBatches.filter(cb => {
+    const matchesSearch = searchTerm ? 
+      cb.course_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      cb.course_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      cb.department_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      cb.instructor_name?.toLowerCase().includes(searchTerm.toLowerCase())
+      : true;
+    
+    const matchesDepartment = selectedDepartment ? 
+      cb.department_id.toString() === selectedDepartment 
+      : true;
+    
+    // FIX: Get batch_year from batches array
+    const selectedBatchObj = batches.find(b => b.batch_id.toString() === selectedBatch);
+    const selectedBatchYear = selectedBatchObj?.batch_year;
+    
+   const matchesBatch = selectedBatch ? 
+  cb.batch.toString() === selectedBatch  // cb.batch is now batch_id
+  : true;
+    let matchesSemester = true;
+    if (selectedSemester) {
+      // Make sure both are strings for comparison
+      matchesSemester = cb.semester_id.toString() === selectedSemester.toString();
+    }
+    
+    return matchesSearch && matchesDepartment && matchesBatch && matchesSemester;
+  });
+  
+  // Sort: user's department first
+  if (user?.department_id) {
+    filtered.sort((a, b) => {
+      const aIsUserDept = a.department_id === user.department_id;
+      const bIsUserDept = b.department_id === user.department_id;
+      return (bIsUserDept ? 1 : 0) - (aIsUserDept ? 1 : 0);
     });
-  }, [courseBatches, searchTerm, selectedDepartment, selectedBatch, selectedSemester]);
-
-  // Calculate statistics
+  }
+  
+  return filtered;
+}, [courseBatches, searchTerm, selectedDepartment, selectedBatch, selectedSemester, user?.department_id, batches]); // Calculate statistics
+   
+  const filteredCourseBatches = filteredCourseBatche.filter(cb => cb.department_id === user?.department_id);
   const totalAssignments = courseBatches.length;
   const uniqueCourses = [...new Set(courseBatches.map(cb => cb.course_id))].length;
   const uniqueBatches = [...new Set(courseBatches.map(cb => cb.batch))].length;
@@ -2097,7 +2114,7 @@ const handleSaveSection = useCallback(
                   <Stack gap="xs">
                     <Group justify="space-between">
                       <Badge color="orange" variant="light">
-                        Batch {cb.batch}
+                        Batch {cb.batch !== null ? cb.batch_year: cb.batch}
                       </Badge>
                       <Badge color="green" variant="light">
                         {cb.semester_name}
@@ -2173,15 +2190,15 @@ const handleSaveSection = useCallback(
     <Container size="xl" py="xl" className="min-h-screen">
       <Stack gap="lg">
         {/* Header */}
-        <Box className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 p-8">
+        <Box className="relative overflow-hidden rounded-2xl to-indigo-600 p-8">
           <Stack gap="xs">
             <Group align="center" gap="sm">
-              <ThemeIcon size="xl" radius="lg" color="white" variant="white">
-                <BookOpenIcon className="h-6 w-6 text-blue-600" />
+              <ThemeIcon size="xl" radius="lg" color="blue" variant="blue">
+                <BookOpenIcon className="h-6 w-6 text-white-600" />
               </ThemeIcon>
-              <Title order={1} c="white">Course Batch Management</Title>
+              <Title order={1} c="blue">Course Batch Management</Title>
             </Group>
-            <Text className="text-blue-100 max-w-2xl" component="div">
+            <Text className="text-blue-100 max-w-2xl" c="blue" component="div">
               Assign multiple courses to specific batches and semesters across departments. 
               Manage section instructors and organize curriculum planning.
             </Text>
@@ -2293,18 +2310,6 @@ const handleSaveSection = useCallback(
                   style={{ flex: 1 }}
                 />
                 
-                <Select
-                  placeholder="Department"
-                  data={departments.map(d => ({
-                    value: d.department_id.toString(),
-                    label: d.department_name
-                  }))}
-                  value={selectedDepartment}
-                  onChange={setSelectedDepartment}
-                  clearable
-                  size="md"
-                  style={{ width: 200 }}
-                />
                 
                 <Select
                   placeholder="Batch"
@@ -2531,7 +2536,7 @@ const handleSaveSection = useCallback(
                                   size="lg"
                                   leftSection={<UserGroupIcon className="h-3 w-3 mr-1" />}
                                 >
-                                  Batch {cb.batch}
+                                   {cb.batch ? cb.batch_year:"Batch " + cb.batch}
                                 </Badge>
                               </Table.Td>
                               
@@ -2622,42 +2627,6 @@ const handleSaveSection = useCallback(
                                       <PencilSquareIcon className="h-4 w-4" />
                                     </ActionIcon>
                                   </Tooltip>
-                                  
-                                  <Menu shadow="md" width={200} position="bottom-end">
-                                    <Menu.Target>
-                                      <ActionIcon variant="light" color="teal">
-                                        <UserGroupIcon className="h-4 w-4" />
-                                      </ActionIcon>
-                                    </Menu.Target>
-                                    
-                                    <Menu.Dropdown>
-                                      <Menu.Label>Section Management</Menu.Label>
-                                      {hasAdminAssignedInstructors ? (
-                                        <Menu.Item
-                                          leftSection={<UserGroupIcon className="h-4 w-4" />}
-                                          onClick={() => setSectionModalState({ opened: true, courseBatch: cb })}
-                                          disabled={activeInstructors.length === 0}
-                                        >
-                                          Manage Section Instructors
-                                          {existingSectionAssignments.length > 0 && (
-                                            <Badge ml="sm" size="xs" color="indigo">
-                                              {existingSectionAssignments.length}
-                                            </Badge>
-                                          )}
-                                          {activeInstructors.length === 0 && (
-                                            <Badge ml="sm" size="xs" color="red">
-                                              No active
-                                            </Badge>
-                                          )}
-                                        </Menu.Item>
-                                      ) : (
-                                        <Menu.Item disabled leftSection={<ExclamationTriangleIcon className="h-4 w-4" />}>
-                                          No admin-assigned instructors
-                                        </Menu.Item>
-                                      )}
-                                    </Menu.Dropdown>
-                                  </Menu>
-                                  
                                   <Tooltip label="Delete assignment">
                                     <ActionIcon
                                       variant="light"

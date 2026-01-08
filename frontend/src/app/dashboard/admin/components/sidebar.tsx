@@ -132,15 +132,15 @@ export const AdminSidebar = ({
           { key: "manageUsers", icon: UserGroupIcon, label: "Manage Users" },
         ]
       },
-      student: {
-        key: 'manageStudent',
-        Icon: UsersIcon,
-        label: 'Manage Student',
-        items: [
-          { key: "addstudent", icon: UserPlusIcon, label: "Add New Student" },
-          { key: "addexternalfile", icon: AcademicCapIcon, label: "Import Students" },
-        ]
-      },
+      // student: {
+      //   key: 'manageStudent',
+      //   Icon: UsersIcon,
+      //   label: 'Manage Student',
+      //   items: [
+      //     { key: "addstudent", icon: UserPlusIcon, label: "Add New Student" },
+      //     { key: "addexternalfile", icon: AcademicCapIcon, label: "Import Students" },
+      //   ]
+      // },
       course: {
         key: 'manageCourse',
         Icon: AcademicCapIcon,
@@ -205,6 +205,7 @@ export const AdminSidebar = ({
     singleItems: [
       { key: "dashboard", Icon: HomeIcon, label: "Dashboard" },
       { key: "chat", Icon: ChatBubbleLeftRightIcon, label: "Chat" },
+                { key: "addstudent", Icon: UserPlusIcon, label: "Manage Student" },
     ]
   }), []);
 

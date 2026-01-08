@@ -18,6 +18,7 @@ export interface Block {
 }
 
 export interface Floor {
+  room_count: number;
   floor_id: number;
   block_id: number;
   floor_number: number;
@@ -90,6 +91,15 @@ export const fetchFloors = createAsyncThunk(
       url += `?block_id=${blockId}`;
     }
 
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to fetch floors');
+    return response.json();
+  }
+);
+export const fetchFloorsByBlock = createAsyncThunk(
+  'rooms/fetchFloors',
+  async (blockId?: number) => {
+    const  url = `${API_URL}/api/floors/block/${blockId}`;
     const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to fetch floors');
     return response.json();
@@ -189,7 +199,6 @@ export const fetchRoomsWithDepBlocks = createAsyncThunk(
   }
 );
 
-
 export const addBlock = createAsyncThunk(
   'rooms/addBlock',
   async (blockData: Omit<Block, 'block_id'>) => {
@@ -252,7 +261,6 @@ export const deleteBlock = createAsyncThunk(
     return { blockId };
   }
 );
-
 // FIXED: Use RoomFormData instead of Omit<Room, 'room_id'>
 export const addRoom = createAsyncThunk(
   'rooms/addRoom',
@@ -307,7 +315,6 @@ export const deleteRoom = createAsyncThunk(
     return { roomId };
   }
 );
-
 // Get blocks assigned to a specific faculty
 export const fetchFacultyBlocks = createAsyncThunk(
   'rooms/fetchFacultyBlocks',
@@ -322,7 +329,6 @@ export const fetchFacultyBlocks = createAsyncThunk(
     }
   }
 );
-
 // Assign multiple blocks to a faculty
 export const assignBlocksToFaculty = createAsyncThunk(
   'rooms/assignBlocksToFaculty',
@@ -355,7 +361,6 @@ export const assignBlocksToFaculty = createAsyncThunk(
     }
   }
 );
-
 // Remove a block from faculty
 export const removeBlockFromFaculty = createAsyncThunk(
   'rooms/removeBlockFromFaculty',
@@ -380,7 +385,6 @@ export const removeBlockFromFaculty = createAsyncThunk(
     }
   }
 );
-
 // Get all blocks with faculty info
 export const fetchAllBlocksWithFaculty = createAsyncThunk(
   'rooms/fetchAllBlocksWithFaculty',
@@ -395,32 +399,93 @@ export const fetchAllBlocksWithFaculty = createAsyncThunk(
     }
   }
 );
-// Add this to your roomsSlice async thunks
+// Assign all rooms in a floor to a department
+ export const assignFloorRoomsToDepartment = createAsyncThunk(
+    'rooms/assignFloorRoomsToDepartment',
+    async ({ departmentId, floorId, minCapacity }: { 
+      departmentId: number; 
+      floorId: number; 
+      minCapacity?: number 
+    },    { rejectWithValue }
+    ) => {
+    try {
+      const response = await fetch(`${API_URL}/api/departments/${departmentId}/assign-floor/${floorId}/rooms`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+        department_id: departmentId,
+        floor_id: floorId,
+        min_capacity: minCapacity
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to assign rooms to department');
+      }
+
+      return response.json();
+    } catch (error: any) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+// Assign specific rooms to a department (existing - keep this)
 export const assignRoomToDepartment = createAsyncThunk(
   'rooms/assignRoomToDepartment',
   async (
-    { departmentId, roomId, status = 'active' }:
-      { departmentId: number; roomId: number[]; status?: string },
+    { departmentId, roomIds, status = 'active' }:
+      { departmentId: number; roomIds: number[]; status?: string },
     { rejectWithValue }
   ) => {
     try {
+      console.log("array2", roomIds);
       const response = await fetch(`${API_URL}/api/departments/${departmentId}/rooms`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          room_id: roomId,
+          room_ids: roomIds,
           status
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to assign room to department');
+        throw new Error(errorData.message || 'Failed to assign rooms to department');
       }
 
       return response.json();
+    } catch (error: any) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+export const fetchRoomsByFloorBlock = createAsyncThunk(
+  'rooms/fetchRoomsByFloor',
+  async ({floorId, blockId  }:{floorId: number, blockId :number },{ rejectWithValue }) => {
+    try {
+      const response = await fetch(`${API_URL}/api/rooms/${floorId}/with/${blockId}/rooms`);
+      if (!response.ok) throw new Error('Failed to fetch floor rooms');
+      const data = await response.json();
+      return data;
+    } catch (error: any) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+// Fetch rooms for a specific floor
+export const fetchRoomsByFloor = createAsyncThunk(
+  'rooms/fetchRoomsByFloor',
+  async (floorId: number, { rejectWithValue }) => {
+    try {
+      const response = await fetch(`${API_URL}/api/floors/${floorId}/rooms`);
+      if (!response.ok) throw new Error('Failed to fetch floor rooms');
+      const data = await response.json();
+      return data;
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
@@ -462,6 +527,20 @@ export const fetchDepartmentRooms = createAsyncThunk(
     }
   }
 );
+export const fetchRoomDepartment = createAsyncThunk(
+  'rooms/fetchDepartmentRooms',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await fetch(`${API_URL}/api/departments/roomstodep`);
+      const data = await response.json();
+      if (!response.ok) return rejectWithValue(data.error || "Failed to fetch rooms");
+      return data.rooms; // ✅ array of all rooms
+    } catch (error: any) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
 
 export const removeRoomFromDepartment = createAsyncThunk(
   'rooms/removeRoomFromDepartment',

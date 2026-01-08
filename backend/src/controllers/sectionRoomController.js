@@ -14,16 +14,21 @@ const getAllSectionRooms = async (req, res) => {
         d.department_name,
         b.batch_year,
         r.room_number,
-        r.room_name,
         r.room_type,
         r.capacity,
-        r.facilities,
         r.is_available,
+        f.floor_id,
+        f.floor_number,
+        bl.block_id,
+        bl.block_name,
+        bl.block_code,
         dr.status as department_room_status
       FROM section_rooms sr
       LEFT JOIN departments d ON sr.department_id = d.department_id
       LEFT JOIN batches b ON sr.batch_id = b.batch_id
       LEFT JOIN rooms r ON sr.room_id = r.room_id
+      LEFT JOIN floors f ON r.floor_id = f.floor_id
+      LEFT JOIN blocks bl ON f.block_id = bl.block_id
       LEFT JOIN departments_rooms dr ON sr.room_id = dr.room_id AND sr.department_id = dr.department_id
       ORDER BY sr.created_at DESC
     `;
@@ -54,14 +59,19 @@ const getSectionRoomById = async (req, res) => {
         d.department_name,
         b.batch_year,
         r.room_number,
-        r.room_name,
         r.room_type,
         r.capacity,
-        r.facilities
+        f.floor_id,
+        f.floor_number,
+        bl.block_id,
+        bl.block_name,
+        bl.block_code
       FROM section_rooms sr
       LEFT JOIN departments d ON sr.department_id = d.department_id
       LEFT JOIN batches b ON sr.batch_id = b.batch_id
       LEFT JOIN rooms r ON sr.room_id = r.room_id
+      LEFT JOIN floors f ON r.floor_id = f.floor_id
+      LEFT JOIN blocks bl ON f.block_id = bl.block_id
       WHERE sr.id = $1
     `;
 
@@ -105,9 +115,12 @@ const createSectionRoom = async (req, res) => {
 
     // Check if room belongs to department in departments_rooms
     const roomCheck = await pool.query(
-      `SELECT dr.*, r.room_number, r.room_name, r.room_type, r.is_available
+      `SELECT dr.*, r.room_number, r.room_type, r.is_available, 
+              f.floor_id, f.floor_number, bl.block_name
        FROM departments_rooms dr
        JOIN rooms r ON dr.room_id = r.room_id
+       JOIN floors f ON r.floor_id = f.floor_id
+       JOIN blocks bl ON f.block_id = bl.block_id
        WHERE dr.department_id = $1 AND dr.room_id = $2 AND dr.status = 'active'`,
       [department_id, room_id]
     );
@@ -138,7 +151,8 @@ const createSectionRoom = async (req, res) => {
        AND r.room_type = 'lab'`,
       [department_id, batch_id, section]
     );
-  // Check if section already has a room for this batch and department
+  
+    // Check if section already has a room for this batch and department
     const sectionCheckclassroom = await pool.query(
       `SELECT sr.id , r.room_type
         FROM section_rooms sr
@@ -150,15 +164,14 @@ const createSectionRoom = async (req, res) => {
       [department_id, batch_id, section]
     );
    
+    const roomType = roomCheck.rows[0].room_type.toLowerCase();
     
-   
-   const roomType = roomCheck.rows[0].room_type.toLowerCase();    // Check if room is already assigned (unique constraint)
+    // Check if room is already assigned (unique constraint)
     if (roomType !== 'lab') {
       const duplicateCheck = await pool.query(
         `SELECT id FROM section_rooms WHERE room_id = $1`,
         [room_id]
       );
-   
  
       if (duplicateCheck.rows.length > 0) {
         return res.status(409).json({
@@ -166,12 +179,13 @@ const createSectionRoom = async (req, res) => {
           error: "Room is already assigned to another section"
         });
       }
-       if (sectionCheckclassroom.rows.length > 0 ){
-       return res.status(409).json({
-        success: false,
-        error: "This section already has a Classroom assigned"
-      });
-    }
+      
+      if (sectionCheckclassroom.rows.length > 0 ){
+        return res.status(409).json({
+          success: false,
+          error: "This section already has a Classroom assigned"
+        });
+      }
     }
     else if (sectionChecklab.rows.length > 0 ) {
       return res.status(409).json({
@@ -194,21 +208,26 @@ const createSectionRoom = async (req, res) => {
       room_id,
     ]);
 
-    // Get the full data with joins
+    // Get the full data with joins including floor info
     const fullDataQuery = `
       SELECT 
         sr.*,
         d.department_name,
         b.batch_year,
         r.room_number,
-        r.room_name,
         r.room_type,
         r.capacity,
-        r.facilities
+        f.floor_id,
+        f.floor_number,
+        bl.block_id,
+        bl.block_name,
+        bl.block_code
       FROM section_rooms sr
       LEFT JOIN departments d ON sr.department_id = d.department_id
       LEFT JOIN batches b ON sr.batch_id = b.batch_id
       LEFT JOIN rooms r ON sr.room_id = r.room_id
+      LEFT JOIN floors f ON r.floor_id = f.floor_id
+      LEFT JOIN blocks bl ON f.block_id = bl.block_id
       WHERE sr.id = $1
     `;
 
@@ -278,9 +297,12 @@ const updateSectionRoom = async (req, res) => {
     // If room_id is being changed, check new room availability
     if (room_id && room_id !== checkQuery.rows[0].room_id) {
       const roomCheck = await pool.query(
-        `SELECT dr.*, r.room_number, r.is_available
+        `SELECT dr.*, r.room_number, r.is_available,
+                f.floor_id, f.floor_number, bl.block_name
          FROM departments_rooms dr
          JOIN rooms r ON dr.room_id = r.room_id
+         JOIN floors f ON r.floor_id = f.floor_id
+         JOIN blocks bl ON f.block_id = bl.block_id
          WHERE dr.department_id = $1 AND dr.room_id = $2 AND dr.status = 'active'`,
         [department_id || checkQuery.rows[0].department_id, room_id]
       );
@@ -382,21 +404,26 @@ const updateSectionRoom = async (req, res) => {
 
     const { rows } = await pool.query(query, values);
 
-    // Get the full updated data with joins
+    // Get the full updated data with joins including floor info
     const fullDataQuery = `
       SELECT 
         sr.*,
         d.department_name,
         b.batch_year,
         r.room_number,
-        r.room_name,
         r.room_type,
         r.capacity,
-        r.facilities
+        f.floor_id,
+        f.floor_number,
+        bl.block_id,
+        bl.block_name,
+        bl.block_code
       FROM section_rooms sr
       LEFT JOIN departments d ON sr.department_id = d.department_id
       LEFT JOIN batches b ON sr.batch_id = b.batch_id
       LEFT JOIN rooms r ON sr.room_id = r.room_id
+      LEFT JOIN floors f ON r.floor_id = f.floor_id
+      LEFT JOIN blocks bl ON f.block_id = bl.block_id
       WHERE sr.id = $1
     `;
 
@@ -466,10 +493,6 @@ const deleteSectionRoom = async (req, res) => {
   }
 };
 
-/**
- * @desc    Get available rooms for a department
- * @route   GET /api/section-rooms/available-rooms
- */
 const getAvailableRooms = async (req, res) => {
   try {
     const { department_id } = req.query;
@@ -485,23 +508,26 @@ const getAvailableRooms = async (req, res) => {
       SELECT 
         r.room_id,
         r.room_number,
-        r.room_name,
         r.room_type,
         r.capacity,
-        r.facilities,
         r.is_available,
-        dr.status as department_room_status,
-        b.block_name
+        f.floor_id,
+        f.floor_number,
+        bl.block_id,
+        bl.block_name,
+        bl.block_code,
+        dr.status as department_room_status
       FROM rooms r
       JOIN departments_rooms dr ON r.room_id = dr.room_id
-      LEFT JOIN blocks b ON r.block_id = b.block_id
+      JOIN floors f ON r.floor_id = f.floor_id
+      JOIN blocks bl ON f.block_id = bl.block_id
       WHERE dr.department_id = $1 
         AND dr.status = 'active'
         AND r.is_available = true
         AND r.room_id NOT IN (
           SELECT room_id FROM section_rooms
         )
-      ORDER BY r.room_number
+      ORDER BY bl.block_name, f.floor_number, r.room_number
     `;
 
     const { rows } = await pool.query(query, [department_id]);
@@ -534,14 +560,19 @@ const getSectionRoomsByFilter = async (req, res) => {
         d.department_name,
         b.batch_year,
         r.room_number,
-        r.room_name,
         r.room_type,
         r.capacity,
-        r.facilities
+        f.floor_id,
+        f.floor_number,
+        bl.block_id,
+        bl.block_name,
+        bl.block_code
       FROM section_rooms sr
       LEFT JOIN departments d ON sr.department_id = d.department_id
       LEFT JOIN batches b ON sr.batch_id = b.batch_id
       LEFT JOIN rooms r ON sr.room_id = r.room_id
+      LEFT JOIN floors f ON r.floor_id = f.floor_id
+      LEFT JOIN blocks bl ON f.block_id = bl.block_id
       WHERE 1=1
     `;
     

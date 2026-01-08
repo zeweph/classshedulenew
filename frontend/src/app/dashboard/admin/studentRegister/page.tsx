@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { use, useEffect, useState } from "react";
 import {
   Container,
   Card,
@@ -100,6 +100,8 @@ import {
   selectFilteredStudents
 } from "@/store/selectors/studentSelector";
 import { Authentication, Found } from "@/app/auth/auth";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 const StudentRegistrationPage: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -120,6 +122,7 @@ const StudentRegistrationPage: React.FC = () => {
   const batchOptions = useAppSelector(selectBatchOptions);
   const semesterOptions = useAppSelector(selectSemesterOptions);
   const filteredStudents = useAppSelector(selectFilteredStudents);
+  const router = useRouter();
 
   const [user, setUser] = useState<any>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
@@ -346,7 +349,6 @@ const sectionOptions = [
   if (user === null) {
     return <Authentication />;
   }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-100/20">
       <Container size="xl" className="py-8">
@@ -369,11 +371,10 @@ const sectionOptions = [
                 size="lg"
                 radius="lg"
                 onClick={() => {
-                  handleResetForm();
-                  openRegistrationModal();
+                 router.push('/dashboard/admin/import-students')
                 }}
               >
-                Register New Student
+                Register New Student from excel
               </Button>
             </Group>
           </Group>
@@ -1107,7 +1108,8 @@ const sectionOptions = [
 
             {/* Personal Info */}
             <Stack gap="md">
-              <Title order={4}>Personal Information</Title>
+              <Title order={4}>Personal Informationg
+              </Title>
               <SimpleGrid cols={2} spacing="md">
                 <Stack gap={2}>
                   <Text fw={500} size="sm" c="dimmed">Email</Text>
@@ -1126,7 +1128,7 @@ const sectionOptions = [
                   <Text>{selectedStudent.date_of_birth || 'N/A'}</Text>
                 </Stack>
                 {selectedStudent.address && (
-                  <Stack gap={2} span={2}>
+                  <Stack gap={2} justify-content='center'>
                     <Text fw={500} size="sm" c="dimmed">Address</Text>
                     <Text>{selectedStudent.address}</Text>
                   </Stack>

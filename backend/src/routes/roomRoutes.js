@@ -13,6 +13,7 @@ const {
 router.post("/", createRoom);
 router.get("/", getRooms);
 router.get("/:id", getRoomById);
+router.get("/:floor_id/with/:blockId/rooms", getRoomsByFloor);
 router.put("/:id", updateRoom);
 router.delete("/:id", deleteRoom);
 

@@ -46,6 +46,7 @@ const getTodaySchedule = async (req, res) => {
         dc.end_time,
         b.block_name,
         b.block_code,
+        f.floor_number,
         r.room_number,
         r.room_type,
         u.full_name AS instructor_name,
@@ -61,7 +62,8 @@ const getTodaySchedule = async (req, res) => {
       JOIN course c ON dc.course_id = c.course_id
       JOIN users u ON dc.instructor_id = u.id
       JOIN rooms r ON dc.room_id = r.room_id
-      JOIN blocks b ON r.block_id = b.block_id
+      JOIN floors f ON r.floor_id = f.floor_id
+      JOIN blocks b ON f.block_id = b.block_id
       JOIN departments d ON s.department_id = d.department_id
       JOIN semesters sem ON s.semester_id = sem.id
       JOIN batches ba ON s.batch_id= ba.batch_id
@@ -78,9 +80,10 @@ const getTodaySchedule = async (req, res) => {
       course_code: row.course_code,
       start_time: row.start_time,
       end_time: row.end_time,
-      location: `${row.block_code} - Room ${row.room_number}`,
+      location: `${row.block_code} - Floor ${row.floor_number} - Room ${row.room_number}`,
       block_name: row.block_name,
       block_code: row.block_code,
+      floor_number: row.floor_number,
       room_number: row.room_number,
       room_type: row.room_type,
       day_of_week: row.day_of_week,
@@ -268,12 +271,14 @@ const getAll = async (req, res) => {
            dc.*,
            c.course_name, c.course_code,
            b.block_name, b.block_code,
-           r.room_number, r.room_type, r.capacity,
+          'G'||f.floor_number || '-' || r.room_number AS room_number,
+            r.room_type, r.capacity,
            i.full_name AS instructor_name
          FROM day_courses dc
          LEFT JOIN course c ON dc.course_id = c.course_id
          LEFT JOIN rooms r ON dc.room_id = r.room_id
-         LEFT JOIN blocks b ON r.block_id = b.block_id
+         LEFT JOIN floors f ON r.floor_id = f.floor_id
+         LEFT JOIN blocks b ON f.block_id = b.block_id
          LEFT JOIN users i ON dc.instructor_id = i.id
          WHERE dc.day_schedule_id = ANY($1)
          ORDER BY dc.start_time`,
@@ -298,6 +303,7 @@ const getAll = async (req, res) => {
           room_id: c.room_id,
           block_name: c.block_name,
           block_code: c.block_code,
+          floor_number: c.floor_number,
           room_number: c.room_number,
           room_type: c.room_type,
           room_capacity: c.capacity,
@@ -306,7 +312,7 @@ const getAll = async (req, res) => {
           startTime: c.start_time,
           endTime: c.end_time,
           color: c.color,
-          location: `${c.block_code} - ${c.room_number}`,
+          location: `${c.block_code} - Floor ${c.floor_number} - Room ${c.room_number}`,
           created_at: c.created_at,
           updated_at: c.updated_at
         });
@@ -494,7 +500,7 @@ const Batch = async (req, res) => {
         i.full_name AS instructor_name,
         b.block_name,
         b.block_code,
-        r.room_number,
+       'G'||f.floor_number || '-' || r.room_number AS room_number,
         dc.start_time, 
         dc.end_time, 
         d.department_name
@@ -504,7 +510,8 @@ const Batch = async (req, res) => {
       JOIN course c ON dc.course_id = c.course_id
       JOIN users i ON dc.instructor_id = i.id
       JOIN rooms r ON dc.room_id = r.room_id
-      JOIN blocks b ON r.block_id = b.block_id
+      JOIN floors f ON r.floor_id = f.floor_id
+      JOIN blocks b ON f.block_id = b.block_id
       JOIN departments d ON s.department_id = d.department_id
       WHERE s.status='published' 
         AND s.batch_id = $1 
@@ -532,10 +539,9 @@ const Batch = async (req, res) => {
 
     const result = await pool.query(query, params);
 
-    // Format response with location information
     const formattedResults = result.rows.map(row => ({
       ...row,
-      location: `${row.block_code} - Room ${row.room_number}`,
+      location: `${row.block_code} - Floor ${row.floor_number} - Room ${row.room_number}`,
       start_time: formatTime(row.start_time),
       end_time: formatTime(row.end_time)
     }));
@@ -564,7 +570,8 @@ const getInstructorSchedule = async (req, res) => {
         ds.day_of_week as day,
         dc.start_time,
         dc.end_time,
-        r.room_number as room,
+        b.block_code,
+       'G'|| f.floor_number || '-' || r.room_number AS room_number,
         d.department_name,
         u.full_name as instructor_name,
         u.id_number as instructor_id
@@ -574,9 +581,10 @@ const getInstructorSchedule = async (req, res) => {
       JOIN course c ON dc.course_id = c.course_id
       JOIN users u ON dc.instructor_id = u.id
       JOIN rooms r ON dc.room_id = r.room_id
-      JOIN blocks b ON r.block_id = b.block_id
+      JOIN floors f ON r.floor_id = f.floor_id
+      JOIN blocks b ON f.block_id = b.block_id
       JOIN departments d ON s.department_id = d.department_id
-       JOIN semesters sem ON s.semester_id = sem.id
+      JOIN semesters sem ON s.semester_id = sem.id
       JOIN batches ba ON s.batch_id= ba.batch_id
       WHERE (u.id = $1)
         AND s.status = 'published'
@@ -597,7 +605,6 @@ const getInstructorSchedule = async (req, res) => {
 
     const result = await pool.query(query, [id]);
 
-    // Format the response and add time_slot if not present
     const formattedSchedules = result.rows.map(row => ({
       id: row.id,
       course_name: row.course_name,
@@ -609,7 +616,7 @@ const getInstructorSchedule = async (req, res) => {
       start_time: formatTime(row.start_time),
       end_time: formatTime(row.end_time),
       time_slot: `${formatTime(row.start_time)}-${formatTime(row.end_time)}`,
-      room: row.room,
+      room: `${row.block_code} - G${row.floor_number} - ${row.room_number}`,
       department_name: row.department_name,
       instructor_name: row.instructor_name,
       instructor_id: row.instructor_id
@@ -665,7 +672,6 @@ const getInstructorInfo = async (req, res) => {
 // GET /api/instructors/me/schedule - Get current instructor's schedule (from session)
 const getMySchedule = async (req, res) => {
   try {
-    // Get instructor from session
     if (!req.user || req.user.role !== 'instructor') {
       return res.status(403).json({ error: 'Access denied. Instructor role required.' });
     }
@@ -684,7 +690,8 @@ const getMySchedule = async (req, res) => {
         ds.day_of_week as day,
         dc.start_time,
         dc.end_time,
-        CONCAT(b.block_code, ' - Room ', r.room_number) as room,
+        b.block_code,
+       'G'||f.floor_number || '-' || r.room_number AS room_number,
         d.department_name,
         u.full_name as instructor_name,
         u.id_number as instructor_id,
@@ -695,7 +702,8 @@ const getMySchedule = async (req, res) => {
       JOIN course c ON dc.course_id = c.course_id
       JOIN users u ON dc.instructor_id = u.id
       JOIN rooms r ON dc.room_id = r.room_id
-      JOIN blocks b ON r.block_id = b.block_id
+      JOIN floors f ON r.floor_id = f.floor_id
+      JOIN blocks b ON f.block_id = b.block_id
       JOIN departments d ON s.department_id = d.department_id
       JOIN semesters sem ON s.semester_id = sem.id
       JOIN batches ba ON s.batch_id= ba.batch_id
@@ -718,7 +726,6 @@ const getMySchedule = async (req, res) => {
 
     const result = await pool.query(query, [instructorId]);
 
-    // Format the response
     const formattedSchedules = result.rows.map(row => ({
       id: row.id,
       course_name: row.course_name,
@@ -730,7 +737,7 @@ const getMySchedule = async (req, res) => {
       start_time: formatTime(row.start_time),
       end_time: formatTime(row.end_time),
       time_slot: `${formatTime(row.start_time)}-${formatTime(row.end_time)}`,
-      room: row.room,
+      room: `${row.block_code} - Floor ${row.floor_number} - Room ${row.room_number}`,
       department_name: row.department_name,
       instructor_name: row.instructor_name,
       instructor_id: row.instructor_id,
@@ -801,16 +808,16 @@ const getAvailableRooms = async (req, res) => {
     let query = `
       SELECT 
         r.room_id,
-        r.room_number,
-        r.room_name,
+        f.floor_number || '-' || r.room_number AS room_number,
         r.room_type,
         r.capacity,
-        r.facilities,
+        r.is_available,
         b.block_name,
         b.block_code,
-        CONCAT(b.block_code, ' - Room ', r.room_number) as location
+        CONCAT(b.block_code, ' - Floor ', f.floor_number, ' - Room ', r.room_number) as location
       FROM rooms r
-      JOIN blocks b ON r.block_id = b.block_id
+      JOIN floors f ON r.floor_id = f.floor_id
+      JOIN blocks b ON f.block_id = b.block_id
       WHERE r.is_available = true
         AND r.room_id NOT IN (
           SELECT dc.room_id 
@@ -834,7 +841,7 @@ const getAvailableRooms = async (req, res) => {
       params.push(parseInt(capacity));
     }
 
-    query += ` ORDER BY b.block_name, r.room_number`;
+    query += ` ORDER BY b.block_name, f.floor_number, r.room_number`;
 
     const result = await pool.query(query, params);
     res.json(result.rows);
@@ -852,21 +859,24 @@ const getRoomHierarchy = async (req, res) => {
         b.block_name,
         b.block_code,
         b.description as block_description,
+        b.floor_capacity,
+        f.floor_id,
+        f.floor_number,
+        f.room_capacity as floor_room_capacity,
         r.room_id,
         r.room_number,
-        r.room_name,
         r.room_type,
-        r.capacity,
-        r.facilities,
-        r.is_available
+        r.capacity as room_capacity,
+        r.is_available,
+        r.created_at as room_created_at
       FROM blocks b
-      LEFT JOIN rooms r ON b.block_id = r.block_id
-      ORDER BY b.block_name, r.room_number
+      LEFT JOIN floors f ON b.block_id = f.block_id
+      LEFT JOIN rooms r ON f.floor_id = r.floor_id
+      ORDER BY b.block_name, f.floor_number::INTEGER, r.room_number
     `;
 
     const result = await pool.query(query);
     
-    // Structure the data hierarchically
     const hierarchy = result.rows.reduce((acc, row) => {
       let block = acc.find(b => b.block_id === row.block_id);
       if (!block) {
@@ -875,21 +885,34 @@ const getRoomHierarchy = async (req, res) => {
           block_name: row.block_name,
           block_code: row.block_code,
           block_description: row.block_description,
-          rooms: []
+          floor_capacity: row.floor_capacity,
+          floors: []
         };
         acc.push(block);
       }
 
-      if (row.room_id) {
-        block.rooms.push({
-          room_id: row.room_id,
-          room_number: row.room_number,
-          room_name: row.room_name,
-          room_type: row.room_type,
-          capacity: row.capacity,
-          facilities: row.facilities,
-          is_available: row.is_available
-        });
+      if (row.floor_id) {
+        let floor = block.floors.find(f => f.floor_id === row.floor_id);
+        if (!floor) {
+          floor = {
+            floor_id: row.floor_id,
+            floor_number: row.floor_number,
+            floor_room_capacity: row.floor_room_capacity,
+            rooms: []
+          };
+          block.floors.push(floor);
+        }
+
+        if (row.room_id) {
+          floor.rooms.push({
+            room_id: row.room_id,
+            room_number: row.room_number,
+            room_type: row.room_type,
+            room_capacity: row.room_capacity,
+            is_available: row.is_available,
+            room_created_at: row.room_created_at
+          });
+        }
       }
 
       return acc;
@@ -1002,9 +1025,10 @@ const autoGenerateSchedule = async (req, res) => {
             if ((session.type === "LAB" && room.room_type === "classroom") || (session.type === "LEC" && room.room_type === "lab")) continue;
             //  Instructor for THIS course only
             const instRes = await client.query(
-              `SELECT instructor_id
-               FROM course_instructor_assign
-               WHERE course_id=$1`,
+              `SELECT i.instructor_id
+               FROM course_section_instructor_assign i
+               JOIN course_batch cb ON i.course_batch_id=cb.id
+               WHERE cb.course_id=$1`,
               [session.course_id]
             );
              if (instRes.rowCount === 0) {

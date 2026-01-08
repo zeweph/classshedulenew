@@ -73,7 +73,7 @@ CREATE TABLE departments_rooms (
     id SERIAL PRIMARY KEY,
     department_id int NOT NULL,
     room_id int NOT NULL,
-    status VARCHAR(50) NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (department_id) REFERENCES departments(department_id),
@@ -204,7 +204,7 @@ CREATE TABLE course_batch (
 );
 
 -- Create the table if it doesn't exist
-CREATE TABLE IF NOT EXISTS course_section_instructor_assign (
+CREATE TABLE course_section_instructor_assign (
     id SERIAL PRIMARY KEY,
     course_batch_id INT NOT NULL,
     instructor_id INT NOT NULL,
@@ -216,41 +216,10 @@ CREATE TABLE IF NOT EXISTS course_section_instructor_assign (
     UNIQUE(course_batch_id, instructor_id,  section)
 );
 
+
 -------------------------------------------------------------
 -- 6. BLOCKS TABLE
 -------------------------------------------------------------
-
-
--- Insert Blocks
-INSERT INTO blocks (block_id,block_name, block_code, description) VALUES
-(1,'Main Block','MB','Main academic building'),
-(2,'Science Block','SB','Science building'),
-(3,'Engineering Block','EB','Engineering building'),
-(4,'Arts Block','AB','Arts building'),
-(5,'Library Block','LB','Library area'),
-(6,'Admin Block','AD','Administrative services'),
-(7,'Medical Block','MD','Medical training building'),
-(8,'ICT Block','ICT','Computing building'),
-(9,'Business Block','BB','Business faculty'),
-(10,'Agriculture Block','AG','Agriculture center');
-
--------------------------------------------------------------
--- 7. ROOMS TABLE
--------------------------------------------------------------
-
--- CREATE TABLE rooms (
---     room_id SERIAL PRIMARY KEY,
---     block_id INT NOT NULL REFERENCES blocks(block_id) ON DELETE CASCADE,
---     room_number VARCHAR(20) NOT NULL UNIQUE,
---     room_name VARCHAR(100),
---     room_type VARCHAR(50) NOT NULL,
---     capacity INTEGER,
---     facilities TEXT[],
---     is_available BOOLEAN DEFAULT TRUE,
---     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
---     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
--- );
-
 
 CREATE TABLE blocks (
     block_id SERIAL PRIMARY KEY,
@@ -261,6 +230,10 @@ CREATE TABLE blocks (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+---------------------------------------------
+-- 7. FLOORS  TABLE
+-------------------------------------------------------------
+
 
 CREATE TABLE floors (
     floor_id SERIAL PRIMARY KEY,
@@ -276,6 +249,12 @@ CREATE TABLE floors (
 
     UNIQUE (block_id, floor_number)
 );
+
+---------------------------------------------
+-- 7. ROOMS TABLE
+-------------------------------------------------------------
+
+
 CREATE TABLE rooms (
     room_id SERIAL PRIMARY KEY,
     floor_id INT NOT NULL,
@@ -292,20 +271,6 @@ CREATE TABLE rooms (
     UNIQUE (floor_id, room_number)
 );
 
-
--- Insert Rooms
-INSERT INTO rooms (block_id,room_number, room_name, room_type, capacity, facilities) VALUES
-(1,'G01','Main Hall','conference',200,'{projector,ac,sound_system}'),
-(2,'G02','Reception','office',5,'{ac,computers}'),
-(3,'101','Classroom 101','classroom',40,'{projector,whiteboard}'),
-(5,'102','Computer Lab','lab',30,'{computers,projector,ac}'),
-(6,'201','Physics Lab','lab',25,'{lab_equipment,projector}'),
-(7,'B01','Chem Lab A','lab',20,'{lab_equipment,fume_hood}'),
-(8,'203','Classroom 203','classroom',45,'{projector}'),
-(9,'204','Classroom 204','classroom',50,'{whiteboard}'),
-(1,'301','Smart Lab','lab',35,'{computers,smart_board}'),
-(2,'A01','Office A','office',3,'{computer}');
-
 -------------------------------------------------------------
 -- 8. BATCHES TABLE
 -------------------------------------------------------------
@@ -318,13 +283,13 @@ CREATE TABLE batches (
 
 -- Insert Batches
 INSERT INTO batches (batch_year) VALUES
-('first year'),
-('second year'),
-('third year'),
-('fourth year'),
-('fifth year'),
-('sixth year'),
-('seventh year');
+('First year'),
+('Second year'),
+('Third year'),
+('Fourth year'),
+('Fifth year'),
+('Sixth year'),
+('Seventh year');
 
 -------------------------------------------------------------
 -- 9. SEMESTERS TABLE
@@ -369,32 +334,8 @@ CREATE TABLE schedules (
     FOREIGN KEY (department_id) REFERENCES departments(department_id)
 );
 
--- Insert Schedules
-INSERT INTO schedules (department_id, batch_id, semester_id, section, status) VALUES
-(1,1,1,'A','draft'),
-(1,1,1,'B','published'),
-(2,2,1,'A','draft'),
-(2,2,2,'B','published'),
-(3,3,1,'A','draft'),
-(4,3,1,'B','draft'),
-(5,4,2,'A','published'),
-(6,4,1,'B','draft'),
-(7,5,1,'A','published'),
-(8,6,3,'A','draft');
-
 -------------------------------------------------------------
--- 11. DAY SCHEDULES
--------------------------------------------------------------
-CREATE TABLE day_schedules (
-    id SERIAL PRIMARY KEY,
-    schedule_id INT NOT NULL,
-    day_of_week VARCHAR(20) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
-);
--------------------------------------------------------------
--- 11. DAY SCHEDULES
+-- 11. TIME SLOTE TABLE
 -----------------------------------------------------------
 
 CREATE TABLE time_slots (
@@ -409,18 +350,17 @@ CREATE TABLE time_slots (
     UNIQUE (department_id),
     CHECK (end_time > start_time)
 );
-
-INSERT INTO day_schedules (schedule_id, day_of_week) VALUES
-(1,'Monday'),
-(1,'Wednesday'),
-(2,'Tuesday'),
-(2,'Friday'),
-(3,'Thursday'),
-(4,'Monday'),
-(5,'Wednesday'),
-(6,'Friday'),
-(7,'Tuesday'),
-(8,'Thursday');
+-------------------------------------------------------------
+-- 11. DAY SCHEDULES
+-------------------------------------------------------------
+CREATE TABLE day_schedules (
+    id SERIAL PRIMARY KEY,
+    schedule_id INT NOT NULL,
+    day_of_week VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
+);
 
 -------------------------------------------------------------
 -- 12. DAY COURSES
@@ -439,17 +379,6 @@ CREATE TABLE day_courses (
     FOREIGN KEY (day_schedule_id) REFERENCES day_schedules(id) ON DELETE CASCADE
 );
 
--- Insert Day Courses
-INSERT INTO day_courses (day_schedule_id, course_id, room_id, instructor_id, start_time, end_time) VALUES
-(1,1,3,2,'08:00','10:00'),
-(1,2,3,1,'10:00','12:00'),
-(2,3,4,2,'08:00','10:00'),
-(3,4,5,1,'13:00','15:00'),
-(4,5,6,3,'09:00','11:00'),
-(5,6,7,4,'11:00','13:00'),
-(6,7,8,2,'14:00','16:00'),
-(7,8,9,5,'08:30','10:30'),
-(8,9,10,4,'10:30','12:30');
 -----------------------------------------------------------
 -- 13. FEEDBACK TABLE
 -------------------------------------------------------------

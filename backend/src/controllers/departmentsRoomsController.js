@@ -17,17 +17,18 @@ const getAllDepartmentsRooms = async (req, res) => {
         d.department_name,
         d.department_code,
         r.room_number,
-        r.room_name,
+      
         r.room_type,
         r.capacity,
-        r.facilities,
         r.is_available,
+        f.floor_number,
         b.block_name,
         b.block_code
       FROM departments_rooms dr
       LEFT JOIN departments d ON dr.department_id = d.department_id
       LEFT JOIN rooms r ON dr.room_id = r.room_id
-      LEFT JOIN blocks b ON r.block_id = b.block_id
+      LEFT JOIN floors f ON r.floor_id = f.floor_id
+      LEFT JOIN blocks b ON f.block_id = b.block_id
       ORDER BY dr.created_at DESC
     `;
 
@@ -50,7 +51,8 @@ const getAllDepartmentsRooms = async (req, res) => {
     console.error("Error fetching departments rooms:", error);
     res.status(500).json({
       success: false,
-      error: "Failed to fetch departments rooms"
+      error: "Failed to fetch departments rooms",
+      details: error.message
     });
   }
 };
@@ -69,17 +71,18 @@ const getDepartmentRoomById = async (req, res) => {
         d.department_name,
         d.department_code,
         r.room_number,
-        r.room_name,
+      
         r.room_type,
         r.capacity,
-        r.facilities,
         r.is_available,
+        f.floor_number,
         b.block_name,
         b.block_code
       FROM departments_rooms dr
       LEFT JOIN departments d ON dr.department_id = d.department_id
       LEFT JOIN rooms r ON dr.room_id = r.room_id
-      LEFT JOIN blocks b ON r.block_id = b.block_id
+      LEFT JOIN floors f ON r.floor_id = f.floor_id
+      LEFT JOIN blocks b ON f.block_id = b.block_id
       WHERE dr.id = $1
     `;
 
@@ -106,7 +109,8 @@ const getDepartmentRoomById = async (req, res) => {
     console.error("Error fetching department room:", error);
     res.status(500).json({
       success: false,
-      error: "Failed to fetch department room"
+      error: "Failed to fetch department room",
+      details: error.message
     });
   }
 };
@@ -134,16 +138,17 @@ const getAvailableRoomsForDepartment = async (req, res) => {
         dr.created_at as assigned_at,
         r.room_id,
         r.room_number,
-        r.room_name,
+      
         r.room_type,
         r.capacity,
-        r.facilities,
         r.is_available,
+        f.floor_number,
         b.block_name,
         b.block_code
       FROM departments_rooms dr
       JOIN rooms r ON dr.room_id = r.room_id
-      LEFT JOIN blocks b ON r.block_id = b.block_id
+      LEFT JOIN floors f ON r.floor_id = f.floor_id
+      LEFT JOIN blocks b ON f.block_id = b.block_id
       WHERE dr.department_id = $1 
         AND dr.status = 'active'
         AND r.is_available = true
@@ -169,19 +174,22 @@ const getAvailableRoomsForDepartment = async (req, res) => {
     console.error("Error fetching available rooms:", error);
     res.status(500).json({
       success: false,
-      error: "Failed to fetch available rooms"
+      error: "Failed to fetch available rooms",
+      details: error.message
     });
   }
 };
 
 /**
  * @desc    Get rooms by department ID (with optional filters)
- * @route   GET /api/departments-rooms/department/:department_id
+ * @route   GET /api/departments/:departmentId/rooms
  */
 const getRoomsByDepartmentId = async (req, res) => {
   try {
-    const { department_id } = req.params;
+    const { departmentId } = req.params;
     const { status, available_only } = req.query;
+
+    console.log(`Fetching rooms for department ID: ${departmentId}`);
 
     let query = `
       SELECT 
@@ -192,19 +200,21 @@ const getRoomsByDepartmentId = async (req, res) => {
         dr.created_at,
         dr.updated_at,
         r.room_number,
-        r.room_name,
+      
         r.room_type,
         r.capacity,
-        r.facilities,
         r.is_available,
-        b.block_name
+        f.floor_number,
+        b.block_name,
+        b.block_code
       FROM departments_rooms dr
       JOIN rooms r ON dr.room_id = r.room_id
-      LEFT JOIN blocks b ON r.block_id = b.block_id
+      LEFT JOIN floors f ON r.floor_id = f.floor_id
+      LEFT JOIN blocks b ON f.block_id = b.block_id
       WHERE dr.department_id = $1
     `;
 
-    const values = [department_id];
+    const values = [departmentId];
     let paramCount = 2;
 
     if (status) {
@@ -217,9 +227,11 @@ const getRoomsByDepartmentId = async (req, res) => {
       query += ` AND r.is_available = true`;
     }
 
-    query += ` ORDER BY r.room_number`;
+    query += ` ORDER BY b.block_name, f.floor_number, r.room_number`;
 
     const { rows } = await pool.query(query, values);
+
+    console.log(`Found ${rows.length} rooms for department ${departmentId}`);
 
     // Parse facilities
     const formattedRows = rows.map(row => ({
@@ -229,16 +241,12 @@ const getRoomsByDepartmentId = async (req, res) => {
         : row.facilities || []
     }));
 
-    res.status(200).json({
-      success: true,
-      count: rows.length,
-      data: formattedRows
-    });
+    res.status(200).json(formattedRows);
   } catch (error) {
     console.error("Error fetching department rooms:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch department rooms"
+    res.status(500).json({ 
+      error: "Failed to fetch department rooms",
+      details: error.message 
     });
   }
 };
@@ -262,10 +270,14 @@ const getDepartmentsByRoomId = async (req, res) => {
         d.department_name,
         d.department_code,
         r.room_number,
-        r.room_name
+      
+        f.floor_number,
+        b.block_name
       FROM departments_rooms dr
       JOIN departments d ON dr.department_id = d.department_id
       JOIN rooms r ON dr.room_id = r.room_id
+      LEFT JOIN floors f ON r.floor_id = f.floor_id
+      LEFT JOIN blocks b ON f.block_id = b.block_id
       WHERE dr.room_id = $1
       ORDER BY dr.created_at DESC
     `;
@@ -281,7 +293,8 @@ const getDepartmentsByRoomId = async (req, res) => {
     console.error("Error fetching departments for room:", error);
     res.status(500).json({
       success: false,
-      error: "Failed to fetch departments for room"
+      error: "Failed to fetch departments for room",
+      details: error.message
     });
   }
 };
@@ -296,14 +309,16 @@ const getUnassignedRooms = async (req, res) => {
       SELECT 
         r.room_id,
         r.room_number,
-        r.room_name,
+      
         r.room_type,
         r.capacity,
-        r.facilities,
         r.is_available,
-        b.block_name
+        f.floor_number,
+        b.block_name,
+        b.block_code
       FROM rooms r
-      LEFT JOIN blocks b ON r.block_id = b.block_id
+      LEFT JOIN floors f ON r.floor_id = f.floor_id
+      LEFT JOIN blocks b ON f.block_id = b.block_id
       WHERE r.room_id NOT IN (
         SELECT room_id FROM departments_rooms
       )
@@ -330,7 +345,8 @@ const getUnassignedRooms = async (req, res) => {
     console.error("Error fetching unassigned rooms:", error);
     res.status(500).json({
       success: false,
-      error: "Failed to fetch unassigned rooms"
+      error: "Failed to fetch unassigned rooms",
+      details: error.message
     });
   }
 };
@@ -386,7 +402,8 @@ const getDepartmentRoomStatistics = async (req, res) => {
     console.error("Error fetching department room statistics:", error);
     res.status(500).json({
       success: false,
-      error: "Failed to fetch department room statistics"
+      error: "Failed to fetch department room statistics",
+      details: error.message
     });
   }
 };
@@ -410,16 +427,17 @@ const searchDepartmentRooms = async (req, res) => {
         d.department_name,
         d.department_code,
         r.room_number,
-        r.room_name,
+      
         r.room_type,
         r.capacity,
-        r.facilities,
         r.is_available,
+        f.floor_number,
         b.block_name
       FROM departments_rooms dr
       LEFT JOIN departments d ON dr.department_id = d.department_id
       LEFT JOIN rooms r ON dr.room_id = r.room_id
-      LEFT JOIN blocks b ON r.block_id = b.block_id
+      LEFT JOIN floors f ON r.floor_id = f.floor_id
+      LEFT JOIN blocks b ON f.block_id = b.block_id
       WHERE 1=1
     `;
 
@@ -477,7 +495,8 @@ const searchDepartmentRooms = async (req, res) => {
     console.error("Error searching department rooms:", error);
     res.status(500).json({
       success: false,
-      error: "Failed to search department rooms"
+      error: "Failed to search department rooms",
+      details: error.message
     });
   }
 };
@@ -539,16 +558,17 @@ const getPaginatedDepartmentsRooms = async (req, res) => {
         d.department_name,
         d.department_code,
         r.room_number,
-        r.room_name,
+      
         r.room_type,
         r.capacity,
-        r.facilities,
         r.is_available,
+        f.floor_number,
         b.block_name
       FROM departments_rooms dr
       LEFT JOIN departments d ON dr.department_id = d.department_id
       LEFT JOIN rooms r ON dr.room_id = r.room_id
-      LEFT JOIN blocks b ON r.block_id = b.block_id
+      LEFT JOIN floors f ON r.floor_id = f.floor_id
+      LEFT JOIN blocks b ON f.block_id = b.block_id
       ${whereClause}
       ORDER BY dr.${sort_by} ${order.toUpperCase()}
       LIMIT $${paramCount} OFFSET $${paramCount + 1}
@@ -591,15 +611,12 @@ const getPaginatedDepartmentsRooms = async (req, res) => {
     console.error("Error fetching paginated department rooms:", error);
     res.status(500).json({
       success: false,
-      error: "Failed to fetch paginated department rooms"
+      error: "Failed to fetch paginated department rooms",
+      details: error.message
     });
   }
 };
 
-/**
- * @desc    Add a room to a department
- * @route   POST /api/departments-rooms
- */
 const addRoomToDepartment = async (req, res) => {
   try {
     const { department_id, room_id, status = 'active' } = req.body;
@@ -680,16 +697,17 @@ const addRoomToDepartment = async (req, res) => {
         d.department_name,
         d.department_code,
         r.room_number,
-        r.room_name,
+      
         r.room_type,
         r.capacity,
-        r.facilities,
         r.is_available,
+        f.floor_number,
         b.block_name
       FROM departments_rooms dr
       LEFT JOIN departments d ON dr.department_id = d.department_id
       LEFT JOIN rooms r ON dr.room_id = r.room_id
-      LEFT JOIN blocks b ON r.block_id = b.block_id
+      LEFT JOIN floors f ON r.floor_id = f.floor_id
+      LEFT JOIN blocks b ON f.block_id = b.block_id
       WHERE dr.id = $1
     `;
 
@@ -723,15 +741,12 @@ const addRoomToDepartment = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      error: "Failed to add room to department"
+      error: "Failed to add room to department",
+      details: error.message
     });
   }
 };
 
-/**
- * @desc    Update department room assignment
- * @route   PUT /api/departments-rooms/:id
- */
 const updateDepartmentRoom = async (req, res) => {
   try {
     const { id } = req.params;
@@ -834,15 +849,12 @@ const updateDepartmentRoom = async (req, res) => {
     console.error("Error updating department room:", error);
     res.status(500).json({
       success: false,
-      error: "Failed to update department room assignment"
+      error: "Failed to update department room assignment",
+      details: error.message
     });
   }
 };
 
-/**
- * @desc    Remove a room from a department
- * @route   DELETE /api/departments-rooms/:id
- */
 const removeRoomFromDepartment = async (req, res) => {
   try {
     const { id } = req.params;
@@ -886,7 +898,149 @@ const removeRoomFromDepartment = async (req, res) => {
     console.error("Error removing room from department:", error);
     res.status(500).json({
       success: false,
-      error: "Failed to remove room from department"
+      error: "Failed to remove room from department",
+      details: error.message
+    });
+  }
+};
+
+const getRoomsByFloorId = async (req, res) => {
+  try {
+    const { floorId } = req.params;
+    
+    const query = `
+      SELECT 
+        r.room_id,
+        r.floor_id,
+        r.room_number,
+      
+        r.room_type,
+        r.capacity,
+        r.is_available,
+        f.floor_number,
+        b.block_id,
+        b.block_name,
+        b.block_code
+      FROM rooms r
+      JOIN floors f ON r.floor_id = f.floor_id
+      JOIN blocks b ON f.block_id = b.block_id
+      WHERE r.floor_id = $1
+      ORDER BY r.room_number
+    `;
+    
+    const { rows } = await pool.query(query, [floorId]);
+    
+    // Parse facilities
+    const formattedRows = rows.map(row => ({
+      ...row,
+      facilities: typeof row.facilities === 'string' 
+        ? JSON.parse(row.facilities || '[]')
+        : row.facilities || []
+    }));
+    
+    res.status(200).json(formattedRows);
+  } catch (error) {
+    console.error("Error fetching floor rooms:", error);
+    res.status(500).json({ 
+      error: "Failed to fetch floor rooms",
+      details: error.message 
+    });
+  }
+};
+
+const assignFloorRoomsToDepartment = async (req, res) => {
+  try {
+    const { departmentId } = req.params;
+    const { floor_id, status = 'active' } = req.body;
+    
+    if (!floor_id) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Floor ID is required' 
+      });
+    }
+    
+    // Check if department exists
+    const departmentCheck = await pool.query(
+      'SELECT department_id FROM departments WHERE department_id = $1',
+      [departmentId]
+    );
+    
+    if (departmentCheck.rows.length === 0) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Department not found' 
+      });
+    }
+    
+    // Get all available rooms on the floor that are not assigned to any department
+    const availableRooms = await pool.query(`
+      SELECT r.room_id 
+      FROM rooms r
+      LEFT JOIN departments_rooms dr ON r.room_id = dr.room_id
+      WHERE r.floor_id = $1 
+        AND r.is_available = true 
+        AND dr.room_id IS NULL
+    `, [floor_id]);
+    
+    if (availableRooms.rows.length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'No available rooms on this floor',
+        available_count: 0 
+      });
+    }
+    
+    // Assign each available room to the department
+    const assignedRooms = [];
+    const errors = [];
+    
+    for (const room of availableRooms.rows) {
+      try {
+        const result = await pool.query(
+          `INSERT INTO departments_rooms (department_id, room_id, status) 
+           VALUES ($1, $2, $3) 
+           RETURNING *`,
+          [departmentId, room.room_id, status]
+        );
+        
+        assignedRooms.push(result.rows[0]);
+      } catch (roomError) {
+        // If room is already assigned (unique constraint violation)
+        if (roomError.code === '23505') {
+          errors.push({
+            room_id: room.room_id,
+            error: 'Room already assigned to another department'
+          });
+        } else {
+          errors.push({
+            room_id: room.room_id,
+            error: roomError.message
+          });
+        }
+      }
+    }
+    
+    const response = {
+      success: true,
+      message: `Assigned ${assignedRooms.length} rooms from floor`,
+      assigned_count: assignedRooms.length,
+      assigned_rooms: assignedRooms,
+    };
+    
+    if (errors.length > 0) {
+      response.errors = errors;
+      response.warning = `${errors.length} rooms failed to assign`;
+    }
+    
+    res.json(response);
+    
+  } catch (error) {
+    console.error('Error assigning floor rooms:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Server error',
+      details: error.message 
     });
   }
 };
@@ -903,5 +1057,7 @@ module.exports = {
   getPaginatedDepartmentsRooms,
   addRoomToDepartment,
   updateDepartmentRoom,
-  removeRoomFromDepartment
+  removeRoomFromDepartment,
+  getRoomsByFloorId,
+  assignFloorRoomsToDepartment
 };

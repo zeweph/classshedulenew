@@ -17,7 +17,7 @@ const createFloor = async (req, res) => {
     );
     if (room_capacity) {
       for (let room = 1; room <= room_capacity; room++){
-        let room_number = "R"+room;
+        let room_number = 'R'+(room + 1).toString().padStart(2, '0');
         await pool.query(
       `INSERT INTO rooms (floor_id, room_number) 
        VALUES ($1, $2) 

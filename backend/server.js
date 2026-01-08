@@ -4,7 +4,6 @@ const cors = require("cors");
 const path = require('path');
 const bodyParser = require("body-parser");
 require("dotenv").config();
-
 const app = express();
 
 // Create uploads directory if it doesn't exist
@@ -24,7 +23,9 @@ app.use(session({
   secret: process.env.SESSION_SECRET || "mysecretkey",
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false }, // set true only on HTTPS
+  cookie: {
+      maxAge: 10 * 60 * 1000 // 10 minutes inactivity
+    }, // set true only on HTTPS
 }));
 app.use(express.json()); // ✅ parse JSON
 app.use(express.urlencoded({ extended: true })); 

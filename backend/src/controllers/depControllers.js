@@ -34,7 +34,6 @@ const getDep = async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch departments' });
   }
 }
-
 const createDep = async (req, res) => {
   try {
     const { department_name, faculity_id } = req.body;
@@ -75,7 +74,6 @@ const createDep = async (req, res) => {
     res.status(500).json({ error: 'Failed to create department' });
   }
 }
-
 const updateDep = async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -265,20 +263,19 @@ const getRoomByDepartment = async (req, res) => {
         message: `Department with ID ${departmentId} does not exist` 
       });
     }
-    
     const result = await pool.query(`
       SELECT 
         dr.*,
         r.room_number,
-        r.room_name,
         r.room_type,
         r.capacity,
-        r.facilities,
+        f.floor_number,
         b.block_name,
         b.block_code
       FROM departments_rooms dr
       JOIN rooms r ON dr.room_id = r.room_id
-      JOIN blocks b ON r.block_id = b.block_id
+      JOIN floors f ON  r.floor_id=f.floor_id
+      JOIN blocks b ON f.block_id = b.block_id
       WHERE dr.department_id = $1
       ORDER BY dr.created_at DESC
     `, [departmentId]);
@@ -294,11 +291,173 @@ const getRoomByDepartment = async (req, res) => {
     });
   }
 };
+const getRoomFromDepartment = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        dr.*,
+        r.room_number,
+        r.room_type,
+        r.capacity,
+        f.floor_number,
+        b.block_name,
+        b.block_code
+      FROM departments_rooms dr
+      JOIN rooms r ON dr.room_id = r.room_id
+      JOIN floors f ON r.floor_id = f.floor_id
+      JOIN blocks b ON f.block_id = b.block_id
+      ORDER BY dr.created_at DESC
+    `);
+
+    res.status(200).json({
+      success: true,
+      rooms: result.rows
+    });
+
+  } catch (error) {
+    console.error('Error fetching department rooms:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch department rooms',
+      details: error.message 
+    });
+  }
+};
+
 // Assign multiple blocks to a department
 const assignRoomTodepartment = async (req, res) => {
   try {
     const depId = parseInt(req.params.id);
-    const { room_id, status = 'active' } = req.body;
+    const { room_ids, status = 'active' } = req.body;
+      
+    console.log('Request body:', req.body);
+    console.log('department ID:', depId);
+
+    if (!Number.isInteger(depId) || depId <= 0) {
+      return res.status(400).json({ error: 'Invalid department ID' });
+    }
+
+    // Check if department exists
+    const departmentCheck = await pool.query(
+      'SELECT department_id, department_name FROM departments WHERE department_id = $1',
+      [depId]
+    );
+
+    if (departmentCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'department not found' });
+    }
+
+    const department = departmentCheck.rows[0];
+       let result;
+        let action;
+        let room;
+    // Check if room exists
+    for (const room_id of room_ids) {
+      const roomResult = await pool.query(
+        'SELECT room_id FROM rooms WHERE room_id = $1',
+        [parseInt(room_id)]
+      );
+
+      if (roomResult.rows.length === 0) {
+        return res.status(404).json({ error: `Room ID ${room_id} not found` });
+      }
+
+       room = roomResult.rows[0];
+
+      // Check if room is already assigned to ANY department (not just this one)
+      const existingAssignment = await pool.query(
+        `SELECT dr.*, d.department_name 
+       FROM departments_rooms dr
+       JOIN departments d ON dr.department_id = d.department_id
+       WHERE dr.room_id = $1`,
+        [parseInt(room_id)]
+      );
+  
+      // Use transaction to ensure data consistency
+      try {
+        await pool.query('BEGIN');
+
+       
+        if (existingAssignment.rows.length > 0) {
+          // Room is already assigned to another department
+          const assignedToDepartment = existingAssignment.rows[0];
+        
+          // If it's assigned to THIS department, update it
+          if (assignedToDepartment.department_id === depId) {
+            result = await pool.query(
+              `UPDATE departments_rooms 
+             SET status = $1, updated_at = NOW()
+             WHERE department_id = $2 AND room_id = $3
+             RETURNING *`,
+              [status, depId, parseInt(room_ids)]
+            );
+            action = 'updated';
+          } else {
+            // Room is assigned to a DIFFERENT department
+            await pool.query('ROLLBACK');
+            return res.status(409).json({
+              error: `Room ${room.room_name} (ID: ${room_id}) is already assigned to department: ${assignedToDepartment.department_name}`,
+              current_assignment: {
+                department_id: assignedToDepartment.department_id,
+                department_name: assignedToDepartment.department_name,
+                assignment_id: assignedToDepartment.assignment_id
+              }
+            });
+          }
+        } else {
+          // Room is not assigned to any department, create new assignment
+          result = await pool.query(
+            `INSERT INTO departments_rooms 
+           (department_id, room_id, status)
+           VALUES ($1, $2, $3)
+           RETURNING *`,
+            [depId, parseInt(room_id), status]
+          );
+          action = 'created';
+        }
+
+        await pool.query('COMMIT');
+
+      } catch (err) {
+        await pool.query('ROLLBACK');
+      
+        if (err.code === '23505') {
+          return res.status(409).json({
+            error: 'Room is already assigned to another department',
+            details: 'Each room can only be assigned to one department'
+          });
+        }
+      
+        console.error('Transaction error:', err);
+        throw err;
+      }
+    }
+    
+        const assignment = {
+          ...result.rows[0],
+          room_name: room.room_name,
+          department_name: department.department_name,
+          action: action
+        };
+
+        res.status(201).json({
+          success: true,
+          message: `Room ${room.room_name} has been ${action} ${action === 'updated' ? 'for' : 'to'} department ${department.department_name}`,
+          assignment: assignment
+        });
+  } catch (err) {
+    console.error('POST /api/departments/:depId/rooms error:', err);
+    res.status(500).json({ 
+      error: "Failed to assign room to department",
+      details: err.message 
+    });
+  }
+};
+// Assign multiple blocks to a department
+const assignRoomTodepartmentByFloor = async (req, res) => {
+  try {
+    const depId = parseInt(req.params.id);
+    const floorIds = parseInt(req.params.floorIds);
+    const { minCapacity } = req.body;
       
     console.log('Request body:', req.body);
     console.log('department ID:', depId);
@@ -319,101 +478,82 @@ const assignRoomTodepartment = async (req, res) => {
 
     const department = departmentCheck.rows[0];
 
+       let result,  action, room, room_ids;
+    
     // Check if room exists
-    const roomResult = await pool.query(
-      'SELECT room_id, room_name FROM rooms WHERE room_id = $1',
-      [room_id]
-    );
-
-    if (roomResult.rows.length === 0) {
-      return res.status(404).json({ error: `Room ID ${room_id} not found` });
+    if (minCapacity) {
+      room_ids = await pool.query(`SELECT 
+       f.room_capacity,
+      r.room_id FROM floors f
+      JOIN rooms r ON f.floor_id=r.floor_id
+      WHERE f.floor_id = $1 AND f.room_capacity >= $2`,
+      [parseInt(floorIds), minCapacity]);
     }
+    else {
+      room_ids = await pool.query(`SELECT 
+      f.room_capacity,
+      r.room_id FROM floors f
+      JOIN rooms r ON f.floor_id=r.floor_id
+      WHERE f.floor_id = $1`,
+      [parseInt(floorIds)]);
+    }
+    
+    if (room_ids.rows.length === 0) {
+        return res.status(404).json({ error: `floor not found` });
+    }
+    for (const room_id of room_ids.rows) {
+      const roomResult = await pool.query(
+        'SELECT room_id FROM rooms WHERE room_id = $1',
+        [room_id.room_id]
+      );
 
-    const room = roomResult.rows[0];
-
-    // Check if room is already assigned to ANY department (not just this one)
-    const existingAssignment = await pool.query(
-      `SELECT dr.*, d.department_name 
+      if (roomResult.rows.length === 0) {
+        return res.status(404).json({ error: `Room ID ${room_id} not found` });
+      }
+       room = roomResult.rows[0];
+      // Check if room is already assigned to ANY department (not just this one)
+      const existingAssignment = await pool.query(
+       `SELECT dr.*, d.department_name 
        FROM departments_rooms dr
        JOIN departments d ON dr.department_id = d.department_id
        WHERE dr.room_id = $1`,
-      [room_id]
-    );
-
-    // Use transaction to ensure data consistency
-    try {
-      await pool.query('BEGIN');
-
-      let result;
-      let action;
-
-      if (existingAssignment.rows.length > 0) {
-        // Room is already assigned to another department
-        const assignedToDepartment = existingAssignment.rows[0];
-        
-        // If it's assigned to THIS department, update it
-        if (assignedToDepartment.department_id === depId) {
+        [room_id.room_id]
+      );
+  
+      // Use transaction to ensure data consistency
+      try {
+        await pool.query('BEGIN');
+        if (existingAssignment.rows.length <=0) {
+          // Room is not assigned to any department, create new assignment
           result = await pool.query(
-            `UPDATE departments_rooms 
-             SET status = $1, updated_at = NOW()
-             WHERE department_id = $2 AND room_id = $3
-             RETURNING *`,
-            [status, depId, room_id]
+            `INSERT INTO departments_rooms 
+           (department_id, room_id)
+           VALUES ($1, $2)
+           RETURNING *`,
+            [depId, room_id.room_id]
           );
-          action = 'updated';
-        } else {
-          // Room is assigned to a DIFFERENT department
-          await pool.query('ROLLBACK');
+          action = 'created';
+        }
+        await pool.query('COMMIT');
+
+      } catch (err) {
+        await pool.query('ROLLBACK');
+      
+        if (err.code === '23505') {
           return res.status(409).json({
-            error: `Room ${room.room_name} (ID: ${room_id}) is already assigned to department: ${assignedToDepartment.department_name}`,
-            current_assignment: {
-              department_id: assignedToDepartment.department_id,
-              department_name: assignedToDepartment.department_name,
-              assignment_id: assignedToDepartment.assignment_id
-            }
+            error: 'Room is already assigned to another department',
+            details: 'Each room can only be assigned to one department'
           });
         }
-      } else {
-        // Room is not assigned to any department, create new assignment
-        result = await pool.query(
-          `INSERT INTO departments_rooms 
-           (department_id, room_id, status)
-           VALUES ($1, $2, $3)
-           RETURNING *`,
-          [depId, room_id, status]
-        );
-        action = 'created';
-      }
-
-      await pool.query('COMMIT');
-
-      const assignment = {
-        ...result.rows[0],
-        room_name: room.room_name,
-        department_name: department.department_name,
-        action: action
-      };
-
-      res.status(201).json({
-        success: true,
-        message: `Room ${room.room_name} has been ${action} ${action === 'updated' ? 'for' : 'to'} department ${department.department_name}`,
-        assignment: assignment
-      });
-
-    } catch (err) {
-      await pool.query('ROLLBACK');
       
-      if (err.code === '23505') {
-        return res.status(409).json({
-          error: 'Room is already assigned to another department',
-          details: 'Each room can only be assigned to one department'
-        });
+        console.error('Transaction error:', err);
+        throw err;
       }
-      
-      console.error('Transaction error:', err);
-      throw err;
     }
-    
+        res.status(201).json({
+          success: true,
+          message: `Room ${room.room_name} has been ${action} ${action === 'updated' ? 'for' : 'to'} department ${department.department_name}`,
+        });
   } catch (err) {
     console.error('POST /api/departments/:depId/rooms error:', err);
     res.status(500).json({ 
@@ -471,4 +611,4 @@ const removeRoomFromDepartment = async (req, res) => {
     res.status(500).json({ error: 'Failed to remove block from faculty' });
   }
 };
-module.exports = { getDep, getDepHitory, createDep, updateDep, deleteDep, updateHeadId, getRoomByDepartment, assignRoomTodepartment, removeRoomFromDepartment }
+module.exports = { getDep, getDepHitory, createDep, updateDep, deleteDep, updateHeadId, getRoomByDepartment, assignRoomTodepartment,assignRoomTodepartmentByFloor, removeRoomFromDepartment, getRoomFromDepartment }

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import React from "react";
-import { Authentication, Found } from "@/app/auth/auth";
+import { Authentication, Found, UnauthorizedAccess } from "@/app/auth/auth";
 import { useEffect, useState } from "react";
 import {
   UserGroupIcon,
@@ -75,10 +75,12 @@ const handleSetActiveSection = (section: string) => {
     checkAuth();
   }, []);
 
-  if (user === null) {
+  if (user === null ) {
     return <Authentication />;
   }
-
+  if (user?.role !== 'admin') {
+    return <UnauthorizedAccess />
+    }
   // Mock Data - Replace with real API calls
   const stats = [
     {

@@ -9,7 +9,9 @@ const {
     updateHeadId,
     getRoomByDepartment,
     assignRoomTodepartment,
-    removeRoomFromDepartment } = require("../controllers/depControllers");
+  removeRoomFromDepartment,
+  getRoomFromDepartment,
+assignRoomTodepartmentByFloor} = require("../controllers/depControllers");
 const {
   getAllDepartmentsRooms,
   getDepartmentRoomById,
@@ -22,6 +24,7 @@ const {
   getPaginatedDepartmentsRooms,
   addRoomToDepartment,
   updateDepartmentRoom,
+  
 } = require('../controllers/departmentsRoomsController');
 
 router.get("/", getDep);
@@ -29,9 +32,12 @@ router.post("/", createDep);
 router.put("/:id", updateDep);
 router.put("/:id/head", updateHeadId);
 router.get("/:departmentId/rooms", getRoomByDepartment);
+router.get("/roomstodep",getRoomFromDepartment)
 router.delete("/:departmentId/rooms/:roomId", removeRoomFromDepartment); // Remove block from faculty
 
 router.post("/:id/rooms", assignRoomTodepartment);
+router.post("/:id/assign-floor/:floorIds/rooms", assignRoomTodepartmentByFloor);
+
 router.delete("/:id", deleteDep);
 
 // Get all department rooms

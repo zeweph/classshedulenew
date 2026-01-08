@@ -227,6 +227,12 @@ const createSectionAssignment = async (req, res) => {
      WHERE department_id = $1`,
     [courseBatchCheck.rows[0].department_id]
     );
+    if (timslot.rows.length === 0) {
+        return res.status(400).json({
+  success: false,
+  message: `Time Slote not assigned. please set time slote`
+})
+    }
    const coursesRes = await pool.query(`SELECT 
             c.course_id,
             c.course_name,

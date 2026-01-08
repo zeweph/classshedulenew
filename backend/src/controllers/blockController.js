@@ -17,7 +17,7 @@ const createBlock = async (req, res) => {
     );
     if (floor_capacity !== null) {
       for (let floor = 0; floor < floor_capacity; floor++){
-        let floor_number ="G"+floor;
+        let floor_number =floor;
       await pool.query(
       `INSERT INTO floors (block_id, floor_number) 
        VALUES ($1, $2) 

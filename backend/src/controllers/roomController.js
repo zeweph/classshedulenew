@@ -132,6 +132,31 @@ const getRoomsByBlock = async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 };
+const getRoomsByFloor = async (req, res) => {
+  const { floor_id, blockId } = req.params;
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT 
+        r.*, 
+        f.floor_number,
+        b.block_id,
+        b.block_name,
+        b.block_code
+       FROM rooms r
+       JOIN floors f ON r.floor_id = f.floor_id
+       JOIN blocks b ON f.block_id = b.block_id
+       WHERE f.floor_id = $1 AND b.block_id=$2 
+       ORDER BY f.floor_number, r.room_number`,
+      [floor_id, blockId]
+    );
+
+    res.status(200).json(rows);
+  } catch (err) {
+    console.error("Rooms by block fetch error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
 // UPDATE Room
 const updateRoom = async (req, res) => {
   const { id } = req.params;
@@ -334,7 +359,8 @@ module.exports = {
   createRoom,
   getRooms,
   getRoomById,
-  getRoomsByBlock,  // Changed from getRoomsByFloor
+  getRoomsByBlock,
+  getRoomsByFloor,// Changed from getRoomsByFloor
   updateRoom,
   deleteRoom,
   searchRooms,
